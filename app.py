@@ -1174,7 +1174,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             st.info("No results have been saved yet.")
         else:
             # Filter results based on user role and access permissions
-            if st.session_state.get('user_role') == 'supervisor':
+            if st.session_state.get('is_admin'):
+                # Admin sees: ALL scores
+                filtered_results = results_data
+                st.info(f"📊 Admin view: Viewing all results from all users ({len(results_data)} total).")
+            elif st.session_state.get('user_role') == 'supervisor':
                 # Supervisor sees: their own scores + all direct reports' scores
                 allowed_emails = [st.session_state.email] + [
                     res.get('email') for res in results_data 
