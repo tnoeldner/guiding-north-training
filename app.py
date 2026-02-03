@@ -218,15 +218,6 @@ with st.sidebar:
                 st.warning("Please enter your Gemini API Key.")
                 st.session_state.api_configured = False
 
-    if st.session_state.get("api_configured"):
-        if st.session_state.get("models"):
-            st.session_state.selected_model = st.selectbox(
-                "Select a Model:",
-                st.session_state.get("models", [])
-            )
-        else:
-            st.warning("Could not retrieve a list of models. Please check API key permissions.")
-
 # --- User Login ---
 st.sidebar.header("User Login")
 
@@ -1056,6 +1047,23 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         with tab5:
             st.header("Application Configuration")
             st.write("Manage staff roles, job descriptions, and organizational structure.")
+
+            # Gemini Model Selector
+            st.subheader("AI Model Configuration")
+            if st.session_state.get("api_configured"):
+                if st.session_state.get("models"):
+                    st.session_state.selected_model = st.selectbox(
+                        "Select Gemini Model:",
+                        st.session_state.get("models", []),
+                        help="Choose which Gemini model to use for scenario generation and evaluation"
+                    )
+                    st.info(f"Currently using: **{st.session_state.selected_model}**")
+                else:
+                    st.warning("Could not retrieve a list of models. Please check API key permissions.")
+            else:
+                st.warning("Please configure the Gemini API key first.")
+
+            st.divider()
 
             # Org Chart Management
             st.subheader("Define Organizational Structure")
