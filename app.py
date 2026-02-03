@@ -1199,18 +1199,18 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            new_first_name = st.text_input("First Name:", value=user.get('first_name', ''), key="edit_first_name")
-                            new_email = st.text_input("Email:", value=selected_user_email, key="edit_email", disabled=True)
+                            new_first_name = st.text_input("First Name:", value=user.get('first_name', ''), key=f"edit_first_name_{selected_user_email}")
+                            new_email = st.text_input("Email:", value=selected_user_email, key=f"edit_email_{selected_user_email}", disabled=True)
                             new_position = st.selectbox("Position/Role:", list(STAFF_ROLES.keys()), 
                                                        index=list(STAFF_ROLES.keys()).index(user.get('position')) if user.get('position') in STAFF_ROLES else 0,
-                                                       key="edit_position")
+                                                       key=f"edit_position_{selected_user_email}")
                         with col2:
-                            new_last_name = st.text_input("Last Name:", value=user.get('last_name', ''), key="edit_last_name")
-                            new_is_admin = st.checkbox("Admin Privileges", value=user.get('is_admin', False), key="edit_is_admin")
+                            new_last_name = st.text_input("Last Name:", value=user.get('last_name', ''), key=f"edit_last_name_{selected_user_email}")
+                            new_is_admin = st.checkbox("Admin Privileges", value=user.get('is_admin', False), key=f"edit_is_admin_{selected_user_email}")
                         
                         col_a, col_b, col_c = st.columns([2, 2, 1])
                         with col_a:
-                            if st.button("💾 Save Changes", key="save_user_changes", type="primary"):
+                            if st.button("💾 Save Changes", key=f"save_user_changes_{selected_user_email}", type="primary"):
                                 users_db[selected_user_email]['first_name'] = new_first_name
                                 users_db[selected_user_email]['last_name'] = new_last_name
                                 users_db[selected_user_email]['position'] = new_position
@@ -1223,8 +1223,8 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     st.error("Failed to save user changes.")
                         
                         with col_b:
-                            new_password = st.text_input("Reset Password (optional):", type="password", key="reset_password")
-                            if st.button("🔑 Reset Password", key="reset_pwd_btn"):
+                            new_password = st.text_input("Reset Password (optional):", type="password", key=f"reset_password_{selected_user_email}")
+                            if st.button("🔑 Reset Password", key=f"reset_pwd_btn_{selected_user_email}"):
                                 if new_password:
                                     users_db[selected_user_email]['password_hash'] = hash_password(new_password)
                                     if save_users(users_db):
@@ -1236,7 +1236,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         with col_c:
                             st.write("")
                             st.write("")
-                            if st.button("🗑️ Delete User", key="delete_user_btn"):
+                            if st.button("🗑️ Delete User", key=f"delete_user_btn_{selected_user_email}"):
                                 if selected_user_email != st.session_state.email:  # Prevent self-deletion
                                     del users_db[selected_user_email]
                                     if save_users(users_db):
