@@ -210,6 +210,9 @@ with st.sidebar:
                     with st.spinner("Fetching available models..."):
                         try:
                             st.session_state.models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                            # Set default model if not already set
+                            if 'selected_model' not in st.session_state and st.session_state.models:
+                                st.session_state.selected_model = st.session_state.models[0]
                         except Exception as e:
                             st.error(f"Could not list models: {e}")
                 else:
@@ -409,6 +412,13 @@ if st.session_state.get("email"):
 
 # Main content is only displayed if the user has logged in and the API is configured
 if st.session_state.get("email") and st.session_state.get("api_configured"):
+    # Initialize model with default if not set
+    if 'selected_model' not in st.session_state:
+        if st.session_state.get('models'):
+            st.session_state.selected_model = st.session_state.models[0]
+        else:
+            st.session_state.selected_model = 'gemini-2.0-flash-exp'  # Fallback default
+    
     model = genai.GenerativeModel(st.session_state.selected_model)
 
     # Build tab list based on user role
