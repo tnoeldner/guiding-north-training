@@ -1174,6 +1174,87 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             st.rerun()
                     st.divider()
 
+            # User Management Section
+            st.subheader("Manage Users")
+            with st.expander("View and Edit User Accounts", expanded=False):
+                users_db = load_users()
+                
+                if not users_db:
+                    st.info("No users in the system yet.")
+                else:
+                    st.markdown(f"**Total Users: {len(users_db)}**")
+                    
+                    # Create a searchable user list
+                    user_emails = list(users_db.keys())
+                    selected_user_email = st.selectbox(
+                        "Select User to Edit:",
+                        user_emails,
+                        format_func=lambda email: f"{users_db[email].get('first_name', '')} {users_db[email].get('last_name', '')} ({email})",
+                        key="user_edit_selector"
+                    )
+                    
+                    if selected_user_email:
+                        user = users_db[selected_user_email]
+                        st.markdown(f"### Editing: {user.get('first_name', '')} {user.get('last_name', '')}")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            new_first_name = st.text_input("First Name:", value=user.get('first_name', ''), key="edit_first_name")
+                            new_email = st.text_input("Email:", value=selected_user_email, key="edit_email", disabled=True)
+                            new_position = st.selectbox("Position/Role:", list(STAFF_ROLES.keys()), 
+                                                       index=list(STAFF_ROLES.keys()).index(user.get('position')) if user.get('position') in STAFF_ROLES else 0,
+                                                       key="edit_position")
+                        with col2:
+                            new_last_name = st.text_input("Last Name:", value=user.get('last_name', ''), key="edit_last_name")
+                            new_is_admin = st.checkbox("Admin Privileges", value=user.get('is_admin', False), key="edit_is_admin")
+                        
+                        col_a, col_b, col_c = st.columns([2, 2, 1])
+                        with col_a:
+                            if st.button("💾 Save Changes", key="save_user_changes", type="primary"):
+                                users_db[selected_user_email]['first_name'] = new_first_name
+                                users_db[selected_user_email]['last_name'] = new_last_name
+                                users_db[selected_user_email]['position'] = new_position
+                                users_db[selected_user_email]['is_admin'] = new_is_admin
+                                
+                                if save_users(users_db):
+                                    st.success(f"✅ User {new_first_name} {new_last_name} updated successfully!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to save user changes.")
+                        
+                        with col_b:
+                            new_password = st.text_input("Reset Password (optional):", type="password", key="reset_password")
+                            if st.button("🔑 Reset Password", key="reset_pwd_btn"):
+                                if new_password:
+                                    users_db[selected_user_email]['password_hash'] = hash_password(new_password)
+                                    if save_users(users_db):
+                                        st.success("✅ Password reset successfully!")
+                                        st.rerun()
+                                else:
+                                    st.warning("Please enter a new password.")
+                        
+                        with col_c:
+                            st.write("")
+                            st.write("")
+                            if st.button("🗑️ Delete User", key="delete_user_btn"):
+                                if selected_user_email != st.session_state.email:  # Prevent self-deletion
+                                    del users_db[selected_user_email]
+                                    if save_users(users_db):
+                                        st.success(f"✅ User {selected_user_email} deleted.")
+                                        st.rerun()
+                                else:
+                                    st.error("❌ You cannot delete your own account.")
+                        
+                        st.divider()
+                        st.markdown("#### User Details")
+                        st.json({
+                            "Email": selected_user_email,
+                            "Name": f"{user.get('first_name', '')} {user.get('last_name', '')}",
+                            "Position": user.get('position', 'Unknown'),
+                            "Admin": user.get('is_admin', False),
+                            "Account Created": "N/A"  # Could add timestamp if tracked
+                        })
+
     with results_tab:
         st.header("Results & Progress")
         st.write("Review past performance and track development.")
