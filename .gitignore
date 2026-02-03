@@ -1,0 +1,35 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+*.pyo
+*.egg-info/
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/cache/
+.streamlit/*.db
+
+# Data files (optional - remove if you want to commit these)
+users.json
+results.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.egg
+*.whl
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
