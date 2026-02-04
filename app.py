@@ -1377,16 +1377,21 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         st.header("Organizational Chart")
         st.write("Visualizing the reporting structure of your department.")
 
+        # Reload latest config for org chart display
+        latest_config = load_config()
+        display_org_chart = latest_config.get('org_chart', {'nodes': [], 'edges': []})
+        display_staff_roles = latest_config.get('staff_roles', {})
+        
         # Update nodes from staff roles
-        ORG_CHART['nodes'] = list(STAFF_ROLES.keys())
-        config['org_chart'] = ORG_CHART
-        save_config(config)
+        display_org_chart['nodes'] = list(display_staff_roles.keys())
+        latest_config['org_chart'] = display_org_chart
+        save_config(latest_config)
 
-        if not ORG_CHART['nodes']:
+        if not display_org_chart['nodes']:
             st.warning("No staff roles defined. Please add roles in the Configuration tab to build the chart.")
         else:
-            nodes = [Node(id=role, label=role, size=25) for role in ORG_CHART['nodes']]
-            edges = [Edge(source=edge['source'], target=edge['target'], label="reports to") for edge in ORG_CHART.get('edges', [])]
+            nodes = [Node(id=role, label=role, size=25) for role in display_org_chart['nodes']]
+            edges = [Edge(source=edge['source'], target=edge['target'], label="reports to") for edge in display_org_chart.get('edges', [])]
             
             agraph_config = Config(
                 width=750, 
@@ -1444,22 +1449,36 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 st.markdown("##### Add New Role to Chart")
                 new_role_name = st.text_input("New Role Name:", key="new_role_name_org")
                 if st.button("Add Role", key="add_role_org_button"):
-                    if new_role_name and new_role_name not in STAFF_ROLES:
-                        STAFF_ROLES[new_role_name] = {
+                    # Reload config to ensure we have the latest state
+                    current_config = load_config()
+                    current_staff_roles = current_config.get("staff_roles", {})
+                    
+                    if new_role_name and new_role_name not in current_staff_roles:
+                        current_staff_roles[new_role_name] = {
                             "description": "Please upload a PDF job description below.",
                             "system_instruction": f"You are a practice partner for a {new_role_name}. Evaluate responses based on their job description and the Guiding North Framework."
                         }
-                        config["staff_roles"] = STAFF_ROLES
-                        if save_config(config):
+                        current_config["staff_roles"] = current_staff_roles
+                        if save_config(current_config):
                             st.success(f"Role '{new_role_name}' added to chart and roles list!")
                             st.rerun()
+                        else:
+                            st.error("Failed to save the new role.")
                     else:
-                        st.error("Role name cannot be empty or already exist.")
+                        if not new_role_name:
+                            st.error("Role name cannot be empty.")
+                        else:
+                            st.error(f"Role '{new_role_name}' already exists.")
 
-                if not STAFF_ROLES or len(STAFF_ROLES) < 2:
+                # Reload STAFF_ROLES to get latest from disk
+                current_config = load_config()
+                display_staff_roles = current_config.get("staff_roles", {})
+                current_org_chart = current_config.get("org_chart", {'nodes': [], 'edges': []})
+                
+                if not display_staff_roles or len(display_staff_roles) < 2:
                     st.info("You need at least two roles to define a reporting structure.")
                 else:
-                    role_names = list(STAFF_ROLES.keys())
+                    role_names = list(display_staff_roles.keys())
                     col1, col2, col3 = st.columns([3, 3, 1])
                     with col1:
                         subordinate = st.selectbox("Subordinate Role:", options=role_names, key="subordinate_select")
@@ -1471,10 +1490,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         if st.button("Add Relationship", key="add_relationship"):
                             if subordinate and manager and subordinate != manager:
                                 new_edge = {"source": subordinate, "target": manager}
-                                if new_edge not in ORG_CHART.get('edges', []):
-                                    ORG_CHART.setdefault('edges', []).append(new_edge)
-                                    config['org_chart'] = ORG_CHART
-                                    if save_config(config):
+                                if new_edge not in current_org_chart.get('edges', []):
+                                    current_org_chart.setdefault('edges', []).append(new_edge)
+                                    current_config['org_chart'] = current_org_chart
+                                    if save_config(current_config):
                                         st.success(f"Added: {subordinate} reports to {manager}")
                                         st.rerun()
                                 else:
@@ -1483,15 +1502,15 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                 st.error("Please select two different roles.")
                 
                 st.markdown("##### Current Reporting Structure")
-                if not ORG_CHART.get('edges'):
+                if not current_org_chart.get('edges'):
                     st.info("No reporting relationships defined yet.")
                 else:
-                    for i, edge in enumerate(list(ORG_CHART['edges'])):
+                    for i, edge in enumerate(list(current_org_chart['edges'])):
                         st.markdown(f"- **{edge['source']}** reports to **{edge['target']}**")
                         if st.button(f"Remove", key=f"remove_edge_{i}"):
-                            ORG_CHART['edges'].pop(i)
-                            config['org_chart'] = ORG_CHART
-                            if save_config(config):
+                            current_org_chart['edges'].pop(i)
+                            current_config['org_chart'] = current_org_chart
+                            if save_config(current_config):
                                 st.success("Relationship removed.")
                                 st.rerun()
 
