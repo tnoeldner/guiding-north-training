@@ -585,6 +585,26 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             with st.spinner("Generating a new scenario..."):
                 role_info = STAFF_ROLES[selected_role]
                 last_scenario_text = st.session_state.scenario.strip() if st.session_state.scenario else "None"
+                
+                # Build role-specific scenario guidance
+                role_specific_guidance = ""
+                if "Resident Director" in selected_role or "Apt RD" in selected_role or "RD" in selected_role:
+                    role_specific_guidance = """
+                    
+                    **Role-Specific Scenario Focus:**
+                    As a Resident Director, you handle a wide range of residential life issues. Ensure variety across these common scenario types:
+                    - Student conduct and policy enforcement situations
+                    - Roommate mediation and conflict resolution
+                    - Emergency and safety concerns
+                    - Mental health and wellness referrals
+                    - Community development and staff supervision
+                    - Residential community issues and building management
+                    - Student concerns and complaints
+                    - Staffing and RA coordination challenges
+                    
+                    Vary between these types systematically to build comprehensive competency.
+                    """
+                
                 prompt = f"""
                 **System Grounding:** You are an expert training assistant for the University of North Dakota Housing & Residence Life, specializing in the Guiding NORTH Framework. Your primary tool is the following document:
 
@@ -619,16 +639,31 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 ---
                 {role_info.get('description', 'Not provided.')}
                 ---
+                {role_specific_guidance}
 
-                **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic customer service scenario for a '{selected_role}'.
-                - **Difficulty:** {difficulty}.
-                - **Variety requirement:** Do NOT repeat the same type of scenario as the previous one. If the previous scenario involved a lockout, do not use a lockout scenario this time.
-                - **Scenario variety examples (pick a different one each time):** roommate conflict, noise complaint, policy clarification, guest policy issue, maintenance/repairs, conduct concern, alcohol/drug concern, safety/wellness check, mental health support, accessibility or accommodation request, bias/incident response, community conflict, emergency response, damaged property, billing question.
+                **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic scenario for a '{selected_role}'.
+                
+                **Critical Requirements:**
+                1. **Difficulty Level:** {difficulty}
+                2. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
+                3. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
+                4. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
+                   - Roommate mediation and conflict resolution
+                   - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
+                   - Mental health concerns and wellness referrals
+                   - Emergency/safety situations
+                   - Community development and RA team issues
+                   - Academic or financial concerns affecting housing
+                   - Bias incidents or community safety concerns
+                   - Building maintenance or facility issues
+                   - Housing reassignment or room change requests
+                   - Policy clarification and resident concerns
+                   - Staff or student complaints
 
-                **Previous Scenario (for variety check only):**
+                **Previous Scenario Details (for diversity checking only):**
                 {last_scenario_text}
 
-                The scenario should be a full paragraph and must be something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework.
+                The scenario should be a full, detailed paragraph that is realistic and something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework. Include the student's name, specific details, and contextual information to make it engaging and appropriately challenging for the selected difficulty level.
                 """
                 try:
                     response = client.models.generate_content(
