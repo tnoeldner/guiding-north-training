@@ -746,7 +746,6 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                 st.info("🤝 Your supervisor will review your response and schedule a meeting to discuss the feedback and suggestions.")
                                 st.session_state.scenario = ""
                                 st.session_state.evaluation = ""
-                                st.session_state.response_input = ""
                                 st.rerun()
                             else:
                                 st.error("Failed to submit your response.")
@@ -1876,6 +1875,31 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                 st.markdown(f"**User:** {user_display}")
                                 st.markdown(f"**Email:** {result.get('email', 'N/A')}")
                                 st.markdown(f"**Difficulty:** {difficulty_display}")
+                                st.markdown(f"**Submitted:** {result.get('timestamp', 'N/A')}")
+                                
+                                # Display supervisor review information if available
+                                if result.get('reviewed_by'):
+                                    st.markdown("---")
+                                    st.markdown("#### Supervisor Review")
+                                    review_date = result.get('review_date', 'N/A')
+                                    if review_date and review_date != 'N/A':
+                                        # Format the ISO timestamp for readability
+                                        try:
+                                            from datetime import datetime as dt
+                                            review_dt = dt.fromisoformat(review_date)
+                                            formatted_review_date = review_dt.strftime("%B %d, %Y at %I:%M %p")
+                                        except:
+                                            formatted_review_date = review_date
+                                    else:
+                                        formatted_review_date = review_date
+                                    
+                                    st.success(f"✅ Reviewed by: **{result.get('reviewed_by')}**")
+                                    st.success(f"📅 Review Date: **{formatted_review_date}**")
+                                    
+                                    if result.get('supervisor_notes'):
+                                        st.markdown("**Supervisor Notes:**")
+                                        st.info(result.get('supervisor_notes'))
+                                
                                 st.markdown("---")
                                 st.markdown("#### Scenario")
                                 st.info(result.get('scenario', 'N/A'))
