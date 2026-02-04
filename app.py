@@ -168,6 +168,47 @@ def extract_text_from_pdf(pdf_file):
         st.error(f"Error reading PDF: {e}")
         return None
 
+def get_supervisor_visible_users(supervisor_email, users_db, org_chart):
+    """
+    Get all users that a supervisor can see based on org hierarchy.
+    Includes direct reports and all staff below them in the chain.
+    """
+    visible_users = set()
+    users_db_loaded = users_db if users_db else load_users()
+    
+    # Get all roles that this person supervises (directly or indirectly)
+    def get_subordinate_roles(role_name, edges, visited=None):
+        if visited is None:
+            visited = set()
+        if role_name in visited:
+            return visited
+        visited.add(role_name)
+        
+        for edge in edges:
+            if edge.get('target') == role_name:  # This role reports to role_name
+                visited.update(get_subordinate_roles(edge['source'], edges, visited))
+        return visited
+    
+    # Find supervisor's role
+    supervisor_role = None
+    for email, user_data in users_db_loaded.items():
+        if email == supervisor_email:
+            supervisor_role = user_data.get('position')
+            break
+    
+    if not supervisor_role:
+        return visible_users
+    
+    # Get all roles that report to this supervisor (including indirectly)
+    subordinate_roles = get_subordinate_roles(supervisor_role, org_chart.get('edges', []))
+    
+    # Find all users in those roles
+    for email, user_data in users_db_loaded.items():
+        if user_data.get('position') in subordinate_roles:
+            visible_users.add(email)
+    
+    return visible_users
+
 # --- Gemini API Configuration ---
 def configure_genai(api_key):
     """Configures the Gemini API with the provided key."""
@@ -432,27 +473,48 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             "Scenario Simulator",
             "Tone Polisher",
             "Call Analysis",
+            "Pending Review",
             "Guiding NORTH Framework",
             "Org Chart",
             "Configuration",
             "Results & Progress"
         ]
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(tab_names)
-        framework_tab = tab4
-        org_chart_tab = tab5
-        results_tab = tab7
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(tab_names)
+        pending_review_tab = tab4
+        framework_tab = tab5
+        org_chart_tab = tab6
+        results_tab = tab8
     else:
-        tab_names = [
-            "Scenario Simulator",
-            "Tone Polisher",
-            "Guiding NORTH Framework",
-            "Org Chart",
-            "Results & Progress"
-        ]
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_names)
-        framework_tab = tab3
-        org_chart_tab = tab4
-        results_tab = tab5
+        # Check if user is a supervisor
+        is_supervisor = len(st.session_state.get('direct_reports', [])) > 0
+        
+        if is_supervisor:
+            tab_names = [
+                "Scenario Simulator",
+                "Tone Polisher",
+                "Pending Review",
+                "Guiding NORTH Framework",
+                "Org Chart",
+                "Results & Progress"
+            ]
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_names)
+            pending_review_tab = tab3
+            framework_tab = tab4
+            org_chart_tab = tab5
+            results_tab = tab6
+        else:
+            tab_names = [
+                "Scenario Simulator",
+                "Tone Polisher",
+                "Guiding NORTH Framework",
+                "Org Chart",
+                "Results & Progress"
+            ]
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_names)
+            pending_review_tab = None
+            framework_tab = tab3
+            org_chart_tab = tab4
+            results_tab = tab5
 
     with tab1:
         st.header("Scenario Simulator")
@@ -641,7 +703,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 st.markdown("### Evaluation:")
                 st.markdown(st.session_state.evaluation)
 
-                if st.button("💾 Save Result", key="save_result"):
+                if st.button("💾 Submit for Supervisor Review", key="save_result"):
                     results = load_results()
                     # Extract overall score from the evaluation text
                     overall_score = "Not Found"
@@ -663,11 +725,18 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         "scenario": st.session_state.scenario,
                         "user_response": user_response,
                         "evaluation": st.session_state.evaluation,
-                        "overall_score": overall_score
+                        "overall_score": overall_score,
+                        "status": "pending",
+                        "reviewed_by": None,
+                        "review_date": None,
+                        "supervisor_notes": ""
                     }
                     results.append(new_result)
                     if save_results(results):
-                        st.success("Result saved successfully!")
+                        st.success("✅ Scenario submitted for supervisor review!")
+                        st.info("Your supervisor will review your response and meet with you to discuss the feedback.")
+                        st.session_state.scenario = ""
+                        st.session_state.evaluation = ""
                     else:
                         st.error("Failed to save the result.")
 
@@ -1039,6 +1108,90 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     st.error(f"Error during audio analysis: {e}")
                         else:
                             st.warning("Please provide your name before analyzing the call.")
+
+    # Pending Review Tab - For Supervisors Only
+    if pending_review_tab is not None:
+        with pending_review_tab:
+            st.header("📋 Pending Scenario Reviews")
+            st.write("Review and approve scenario submissions from your staff before they see the results.")
+            
+            if st.session_state.get("is_admin"):
+                st.info("👮 Admin view: You can see all pending scenarios from all staff members.")
+                visible_users = {user_email for user_email in load_users().keys()}
+            else:
+                st.info("👥 Supervisor view: You can see pending scenarios from your direct reports.")
+                visible_users = get_supervisor_visible_users(
+                    st.session_state.email, 
+                    load_users(), 
+                    ORG_CHART
+                )
+            
+            # Load results and filter for pending
+            all_results = load_results()
+            pending_results = [
+                (idx, r) for idx, r in enumerate(all_results) 
+                if r.get('status') == 'pending' and r.get('email') in visible_users
+            ]
+            
+            if not pending_results:
+                st.success("✅ All scenarios have been reviewed!")
+            else:
+                st.warning(f"⚠️ {len(pending_results)} scenarios pending your review")
+                
+                for idx, result in pending_results:
+                    with st.expander(
+                        f"📝 {result.get('first_name')} {result.get('last_name')} - {result.get('role')} ({result.get('difficulty')})",
+                        expanded=False
+                    ):
+                        col1, col2 = st.columns([1, 1])
+                        
+                        with col1:
+                            st.markdown(f"**Name:** {result.get('first_name')} {result.get('last_name')}")
+                            st.markdown(f"**Email:** {result.get('email')}")
+                            st.markdown(f"**Role:** {result.get('role')}")
+                            st.markdown(f"**Difficulty:** {result.get('difficulty')}")
+                            st.markdown(f"**Submitted:** {result.get('timestamp', 'N/A')[:16]}")
+                        
+                        with col2:
+                            st.markdown(f"**Overall Score:** {result.get('overall_score', 'N/A')}")
+                            st.markdown(f"**Status:** Pending Review")
+                        
+                        st.divider()
+                        
+                        st.subheader("📋 Scenario")
+                        st.info(result.get('scenario', 'N/A'))
+                        
+                        st.subheader("✍️ Staff Response")
+                        st.warning(result.get('user_response', 'N/A'))
+                        
+                        st.subheader("🔍 AI Evaluation")
+                        st.markdown(result.get('evaluation', 'N/A'))
+                        
+                        st.divider()
+                        
+                        st.subheader("Supervisor Review")
+                        supervisor_notes = st.text_area(
+                            "Add supervisor notes (optional):",
+                            value=result.get('supervisor_notes', ''),
+                            height=100,
+                            key=f"notes_{idx}_{result.get('email')}"
+                        )
+                        
+                        col_approve, col_reject = st.columns(2)
+                        
+                        with col_approve:
+                            if st.button("✅ Mark as Reviewed", key=f"approve_{idx}_{result.get('email')}", type="primary"):
+                                # Update the result
+                                all_results[idx]['status'] = 'completed'
+                                all_results[idx]['reviewed_by'] = st.session_state.email
+                                all_results[idx]['review_date'] = datetime.now().isoformat()
+                                all_results[idx]['supervisor_notes'] = supervisor_notes
+                                
+                                if save_results(all_results):
+                                    st.success(f"✅ Scenario marked as reviewed!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to update scenario status.")
 
     # Guiding NORTH Framework Tab - Available to All Users
     with framework_tab:
@@ -1431,26 +1584,29 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         st.write("Review past performance and track development.")
 
         results_data = load_results()
+        
+        # Filter to show only completed results (hide pending reviews)
+        completed_results = [r for r in results_data if r.get('status') != 'pending']
 
-        if not results_data:
-            st.info("No results have been saved yet.")
+        if not completed_results:
+            st.info("No completed results yet.")
         else:
             # Filter results based on user role and access permissions
             if st.session_state.get('is_admin'):
-                # Admin sees: ALL scores
-                filtered_results = results_data
-                st.info(f"📊 Admin view: Viewing all results from all users ({len(results_data)} total).")
+                # Admin sees: ALL completed scores
+                filtered_results = completed_results
+                st.info(f"📊 Admin view: Viewing all completed results from all users ({len(completed_results)} total).")
             elif st.session_state.get('user_role') == 'supervisor':
-                # Supervisor sees: their own scores + all direct reports' scores
+                # Supervisor sees: their own scores + all direct reports' scores (completed only)
                 allowed_emails = [st.session_state.email] + [
-                    res.get('email') for res in results_data 
+                    res.get('email') for res in completed_results 
                     if res.get('role') in st.session_state.direct_reports
                 ]
-                filtered_results = [res for res in results_data if res.get('email') in allowed_emails]
+                filtered_results = [res for res in completed_results if res.get('email') in allowed_emails]
                 st.info(f"📊 You are viewing your results and your {len(st.session_state.direct_reports)} direct report role(s).")
             else:
-                # Staff sees: only their own scores
-                filtered_results = [res for res in results_data if res.get('email') == st.session_state.email]
+                # Staff sees: only their own completed scores
+                filtered_results = [res for res in completed_results if res.get('email') == st.session_state.email]
                 st.info(f"📊 You are viewing your own results only.")
             
             if not filtered_results:
