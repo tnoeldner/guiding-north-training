@@ -195,8 +195,8 @@ with st.sidebar:
                 st.success("✅ Gemini API Configured from Secrets!")
                 with st.spinner("Fetching available models..."):
                     try:
-                        models_response = st.session_state.genai_client.models.list()
-                        st.session_state.models = [m.name for m in models_response.models if 'generateContent' in m.supported_generation_methods]
+                        models_pager = st.session_state.genai_client.models.list()
+                        st.session_state.models = [m.name for m in models_pager if 'generateContent' in m.supported_generation_methods]
                     except Exception as e:
                         st.error(f"Could not list models: {e}")
             else:
@@ -212,8 +212,8 @@ with st.sidebar:
                     st.success("Gemini API Configured Successfully!")
                     with st.spinner("Fetching available models..."):
                         try:
-                            models_response = st.session_state.genai_client.models.list()
-                            st.session_state.models = [m.name for m in models_response.models if 'generateContent' in m.supported_generation_methods]
+                            models_pager = st.session_state.genai_client.models.list()
+                            st.session_state.models = [m.name for m in models_pager if 'generateContent' in m.supported_generation_methods]
                             # Set default model if not already set
                             if 'selected_model' not in st.session_state and st.session_state.models:
                                 st.session_state.selected_model = st.session_state.models[0]
