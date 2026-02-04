@@ -483,6 +483,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         pending_review_tab = tab4
         framework_tab = tab5
         org_chart_tab = tab6
+        config_tab = tab7
         results_tab = tab8
     else:
         # Check if user is a supervisor
@@ -501,6 +502,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             pending_review_tab = tab3
             framework_tab = tab4
             org_chart_tab = tab5
+            config_tab = None
             results_tab = tab6
         else:
             tab_names = [
@@ -514,6 +516,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             pending_review_tab = None
             framework_tab = tab3
             org_chart_tab = tab4
+            config_tab = None
             results_tab = tab5
 
     with tab1:
@@ -1378,7 +1381,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
     # Configuration Tab - Admin Only
     if st.session_state.get("is_admin"):
-        with tab5:
+        with config_tab:
             st.header("Application Configuration")
             st.write("Manage staff roles, job descriptions, and organizational structure.")
 
