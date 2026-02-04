@@ -1041,13 +1041,29 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             nodes = [Node(id=role, label=role, size=25) for role in ORG_CHART['nodes']]
             edges = [Edge(source=edge['source'], target=edge['target'], label="reports to") for edge in ORG_CHART.get('edges', [])]
             
-            agraph_config = Config(width=750, 
-                                 height=500, 
-                                 directed=True, 
-                                 physics=True, 
-                                 hierarchical=False,
-                                 # **kwargs
-                                 )
+            agraph_config = Config(
+                width=750, 
+                height=500, 
+                directed=True, 
+                physics=False,  # Disable physics for fixed positions
+                hierarchical=True,  # Enable hierarchical layout for org charts
+                nodeHighlightBehavior=True,
+                highlightColor="#F7A7A6",
+                collapsible=True,
+                layout={
+                    'hierarchical': {
+                        'enabled': True,
+                        'levelSeparation': 150,
+                        'nodeSpacing': 200,
+                        'treeSpacing': 200,
+                        'blockShifting': True,
+                        'edgeMinimization': True,
+                        'parentCentralization': True,
+                        'direction': 'UD',  # Up-Down (top to bottom)
+                        'sortMethod': 'directed'  # Sort by hierarchy
+                    }
+                }
+            )
 
             agraph(nodes=nodes, edges=edges, config=agraph_config)
 
