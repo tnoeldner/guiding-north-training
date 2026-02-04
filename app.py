@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+import google.genai as genai
+from google.genai import types
 import json
 import random
 import io
@@ -171,7 +172,8 @@ def extract_text_from_pdf(pdf_file):
 def configure_genai(api_key):
     """Configures the Gemini API with the provided key."""
     try:
-        genai.configure(api_key=api_key)
+        # Create client with the new SDK
+        st.session_state.genai_client = genai.Client(api_key=api_key)
         return True
     except Exception as e:
         st.error(f"Failed to configure Gemini API: {e}")
@@ -193,7 +195,8 @@ with st.sidebar:
                 st.success("✅ Gemini API Configured from Secrets!")
                 with st.spinner("Fetching available models..."):
                     try:
-                        st.session_state.models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                        models_response = st.session_state.genai_client.models.list()
+                        st.session_state.models = [m.name for m in models_response.models if 'generateContent' in m.supported_generation_methods]
                     except Exception as e:
                         st.error(f"Could not list models: {e}")
             else:
@@ -209,7 +212,8 @@ with st.sidebar:
                     st.success("Gemini API Configured Successfully!")
                     with st.spinner("Fetching available models..."):
                         try:
-                            st.session_state.models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                            models_response = st.session_state.genai_client.models.list()
+                            st.session_state.models = [m.name for m in models_response.models if 'generateContent' in m.supported_generation_methods]
                             # Set default model if not already set
                             if 'selected_model' not in st.session_state and st.session_state.models:
                                 st.session_state.selected_model = st.session_state.models[0]
@@ -417,9 +421,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         if st.session_state.get('models'):
             st.session_state.selected_model = st.session_state.models[0]
         else:
-            st.session_state.selected_model = 'gemini-2.0-flash-exp'  # Fallback default
+            st.session_state.selected_model = 'models/gemini-2.0-flash-exp'  # Fallback default (with proper model prefix)
     
-    model = genai.GenerativeModel(st.session_state.selected_model)
+    # Use client from session state
+    client = st.session_state.get('genai_client')
 
     # Build tab list based on user role
     if st.session_state.get("is_admin"):
@@ -522,9 +527,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 The scenario should be a full paragraph and must be something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework.
                 """
                 try:
-                    response = model.generate_content(
-                        prompt,
-                        generation_config=genai.types.GenerationConfig(
+                    response = client.models.generate_content(
+                        model=st.session_state.selected_model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
                             temperature=0.9,
                             max_output_tokens=15000
                         )
@@ -616,9 +622,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         [Provide a full, detailed, and exemplary response to the original scenario here.]
                         """
                         try:
-                            evaluation_response = model.generate_content(
-                                eval_prompt,
-                                generation_config=genai.types.GenerationConfig(
+                            evaluation_response = client.models.generate_content(
+                                model=st.session_state.selected_model,
+                                contents=eval_prompt,
+                                config=types.GenerateContentConfig(
                                     temperature=0.5,
                                     max_output_tokens=15000
                                 )
@@ -682,12 +689,12 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                     **Polished Text:**
                     """
                     try:
-                        # This assumes 'model' is defined and configured earlier, e.g., in the sidebar
-                        if 'selected_model' in st.session_state and st.session_state.api_configured:
-                            model = genai.GenerativeModel(st.session_state.selected_model)
-                            polished_response = model.generate_content(
-                                polish_prompt,
-                                generation_config=genai.types.GenerationConfig(
+                        # This assumes 'client' is defined and configured earlier, e.g., in the sidebar
+                        if st.session_state.get('selected_model') and st.session_state.api_configured:
+                            polished_response = client.models.generate_content(
+                                model=st.session_state.selected_model,
+                                contents=polish_prompt,
+                                config=types.GenerateContentConfig(
                                     temperature=0.6,
                                     max_output_tokens=500
                                 )
@@ -820,11 +827,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             [Your Detailed Example]
                             """
                             try:
-                                if 'selected_model' in st.session_state and st.session_state.api_configured:
-                                    model = genai.GenerativeModel(st.session_state.selected_model)
-                                    analysis_response = model.generate_content(
-                                        analysis_prompt,
-                                        generation_config=genai.types.GenerationConfig(
+                                if st.session_state.get('selected_model') and st.session_state.api_configured:
+                                    analysis_response = client.models.generate_content(
+                                        model=st.session_state.selected_model,
+                                        contents=analysis_prompt,
+                                        config=types.GenerateContentConfig(
                                             temperature=0.7,
                                             max_output_tokens=15000
                                         )
@@ -886,7 +893,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             with st.spinner("Processing audio and analyzing call..."):
                                 try:
                                     # Upload audio file to Gemini
-                                    audio_file = genai.upload_file(uploaded_audio, mime_type=uploaded_audio.type)
+                                    audio_file = client.files.upload(
+                                        file=uploaded_audio,
+                                        mime_type=uploaded_audio.type
+                                    )
                                     
                                     role_info = STAFF_ROLES[call_role]
                                     analysis_prompt = f"""
@@ -981,10 +991,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     """
                                     
                                     if st.session_state.api_configured:
-                                        model = genai.GenerativeModel(st.session_state.selected_model)
-                                        analysis_response = model.generate_content(
-                                            [audio_file, analysis_prompt],
-                                            generation_config=genai.types.GenerationConfig(
+                                        analysis_response = client.models.generate_content(
+                                            model=st.session_state.selected_model,
+                                            contents=[audio_file, analysis_prompt],
+                                            config=types.GenerateContentConfig(
                                                 temperature=0.7,
                                                 max_output_tokens=15000
                                             )
