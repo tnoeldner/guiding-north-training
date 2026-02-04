@@ -1059,7 +1059,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         'blockShifting': True,
                         'edgeMinimization': True,
                         'parentCentralization': True,
-                        'direction': 'UD',  # Up-Down (top to bottom)
+                        'direction': 'DU',  # Down-Up (managers at top, staff at bottom)
                         'sortMethod': 'directed'  # Sort by hierarchy
                     }
                 }
