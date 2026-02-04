@@ -53,8 +53,6 @@
             "Assignments Coordinator, Residence Halls",
             "Assignments Coordinator, Apartments",
             "Operations Manager",
-            "Apt RD",
-            "Operations Manager",
             "Apt RD"
         ],
         "edges": [
@@ -85,14 +83,6 @@
             {
                 "source": "Assignments Coordinator, Apartments",
                 "target": "Assistant Director of Operations"
-            },
-            {
-                "source": "Operations Manager",
-                "target": "Assistant Director of Operations"
-            },
-            {
-                "source": "Apt RD",
-                "target": "Associate Director of Residence Life"
             },
             {
                 "source": "Operations Manager",
