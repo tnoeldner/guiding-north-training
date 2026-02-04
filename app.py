@@ -427,23 +427,27 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             "Scenario Simulator",
             "Tone Polisher",
             "Call Analysis",
+            "Guiding NORTH Framework",
             "Org Chart",
             "Configuration",
             "Results & Progress"
         ]
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_names)
-        org_chart_tab = tab4
-        results_tab = tab6
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(tab_names)
+        framework_tab = tab4
+        org_chart_tab = tab5
+        results_tab = tab7
     else:
         tab_names = [
             "Scenario Simulator",
             "Tone Polisher",
+            "Guiding NORTH Framework",
             "Org Chart",
             "Results & Progress"
         ]
-        tab1, tab2, tab3, tab4 = st.tabs(tab_names)
-        org_chart_tab = tab3
-        results_tab = tab4
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_names)
+        framework_tab = tab3
+        org_chart_tab = tab4
+        results_tab = tab5
 
     with tab1:
         st.header("Scenario Simulator")
@@ -1025,6 +1029,147 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     st.error(f"Error during audio analysis: {e}")
                         else:
                             st.warning("Please provide your name before analyzing the call.")
+
+    # Guiding NORTH Framework Tab - Available to All Users
+    with framework_tab:
+        st.header("🧭 Guiding NORTH Framework")
+        st.write("The comprehensive communication standard for UND Housing & Residence Life.")
+        
+        st.markdown("---")
+        
+        # Framework Overview
+        st.subheader("📖 The Five Pillars")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            with st.expander("🎯 N - Navigate Needs", expanded=True):
+                st.markdown("""
+                **Listen & Understand**
+                
+                Listen first to understand the real issue, not just the surface question.
+                
+                **Key Behaviors:**
+                - Ask clarifying questions
+                - Validate feelings/perspective first
+                - Explain the "why" behind policies
+                """)
+            
+            with st.expander("🤝 O - Own the Outcome"):
+                st.markdown("""
+                **Responsibility & Resolution**
+                
+                Take personal responsibility for getting the student to their destination.
+                
+                **Key Behaviors:**
+                - The receiver owns the inquiry until resolved
+                - Warm handoffs only (no bouncing)
+                - Follow up to confirm resolution
+                """)
+            
+            with st.expander("💬 R - Respond Respectfully"):
+                st.markdown("""
+                **Tone & Professionalism**
+                
+                Tone and language build trust and confidence.
+                
+                **Key Behaviors:**
+                - Warm, professional, solution-focused tone
+                - No jargon (speak plainly)
+                - Maintain composure during conflict
+                """)
+        
+        with col2:
+            with st.expander("⏱️ T - Timely & Truthful"):
+                st.markdown("""
+                **Swift & Reliable**
+                
+                Guidance is swift and reliable.
+                
+                **Key Behaviors:**
+                - 24-hour response rule
+                - Verify accuracy before speaking (Single Source of Truth)
+                - Honesty about delays
+                """)
+            
+            with st.expander("🚀 H - Help Proactively"):
+                st.markdown("""
+                **Anticipate & Prepare**
+                
+                Anticipate the terrain ahead and clear the path.
+                
+                **Key Behaviors:**
+                - Clarify "next steps"
+                - Use FAQs/Guides
+                - Identify systemic improvements
+                """)
+        
+        st.markdown("---")
+        
+        # Evaluation Rubric
+        st.subheader("📊 Evaluation Rubric")
+        st.write("How responses are evaluated in the Scenario Simulator:")
+        
+        rubric_data = {
+            "Pillar": ["N - Navigate", "O - Own", "R - Respond", "T - Timely", "H - Help"],
+            "Needs Development (1)": [
+                "Jumps to conclusions; ignores feelings",
+                "Blind transfers; 'not my job' attitude",
+                "Abrupt, dismissive tone; uses jargon",
+                "Misses 24h deadline; inaccurate info",
+                "Focuses only on immediate query"
+            ],
+            "Proficient (3)": [
+                "Asks clarifying questions; validates perspective",
+                "Takes ownership until resolved/handed off",
+                "Professional, patient tone; clear language",
+                "Meets 24h deadline; accurate/verified info",
+                "Clarifies next steps; uses guides/FAQs"
+            ],
+            "Exemplary (4)": [
+                "Anticipates unstated needs; defuses tension",
+                "Proactively resolves future issues",
+                "Exceptional warmth; transforms negatives",
+                "Immediate response; anticipates delays",
+                "Creates new resources; comprehensive roadmap"
+            ]
+        }
+        
+        import pandas as pd
+        df = pd.DataFrame(rubric_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        
+        # Operational Context
+        st.subheader("ℹ️ Key Policies & Context")
+        
+        col_a, col_b = st.columns(2)
+        
+        with col_a:
+            st.markdown("""
+            **Hours of Operation:**
+            - Monday-Friday: 8:00 AM - 10:00 PM
+            - Saturday-Sunday: 12:00 PM - 10:00 PM
+            
+            **After Hours Protocol:**
+            - Voicemails after 10 PM reviewed next morning
+            - Staff not expected to answer at 3 AM
+            - Must acknowledge delay next morning
+            """)
+        
+        with col_b:
+            st.markdown("""
+            **Common Fees:**
+            - Lockout Fee: $10 (business hours), $25 (after hours)
+            - Lost Keys: $75 core change fee
+            
+            **Room Changes:**
+            - 2-week freeze period at semester start
+            - No moves allowed during freeze
+            """)
+        
+        st.info("💡 **Pro Tip:** Use this framework when responding to scenarios in the Simulator tab. Your responses will be evaluated based on these pillars!")
 
     with org_chart_tab:
         st.header("Organizational Chart")
