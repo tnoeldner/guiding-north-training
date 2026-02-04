@@ -238,8 +238,20 @@ with st.sidebar:
                     try:
                         models_pager = st.session_state.genai_client.models.list()
                         st.session_state.models = [m.name for m in models_pager if 'gemini' in m.name.lower()]
+                        if not st.session_state.models:
+                            # Fallback if no gemini models found
+                            st.session_state.models = [
+                                'models/gemini-2.0-flash-exp',
+                                'models/gemini-1.5-pro',
+                                'models/gemini-1.5-flash'
+                            ]
                     except Exception as e:
-                        st.error(f"Could not list models: {e}")
+                        # Use fallback models on error
+                        st.session_state.models = [
+                            'models/gemini-2.0-flash-exp',
+                            'models/gemini-1.5-pro',
+                            'models/gemini-1.5-flash'
+                        ]
             else:
                 st.session_state.api_configured = False
     else:
@@ -255,11 +267,24 @@ with st.sidebar:
                         try:
                             models_pager = st.session_state.genai_client.models.list()
                             st.session_state.models = [m.name for m in models_pager if 'gemini' in m.name.lower()]
+                            if not st.session_state.models:
+                                # Fallback if no gemini models found
+                                st.session_state.models = [
+                                    'models/gemini-2.0-flash-exp',
+                                    'models/gemini-1.5-pro',
+                                    'models/gemini-1.5-flash'
+                                ]
                             # Set default model if not already set
                             if 'selected_model' not in st.session_state and st.session_state.models:
                                 st.session_state.selected_model = st.session_state.models[0]
                         except Exception as e:
-                            st.error(f"Could not list models: {e}")
+                            # Use fallback models on error
+                            st.session_state.models = [
+                                'models/gemini-2.0-flash-exp',
+                                'models/gemini-1.5-pro',
+                                'models/gemini-1.5-flash'
+                            ]
+                            st.session_state.selected_model = st.session_state.models[0]
                 else:
                     st.session_state.api_configured = False
             else:
