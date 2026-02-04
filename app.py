@@ -464,8 +464,22 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         else:
             st.session_state.selected_model = 'models/gemini-2.0-flash-exp'  # Fallback default (with proper model prefix)
     
-    # Use client from session state
+    # Use client from session state - ensure it exists
     client = st.session_state.get('genai_client')
+    
+    # If client is None, try to reinitialize it from the API key in secrets
+    if client is None:
+        api_key_secret = st.secrets.get("gemini_api_key")
+        if api_key_secret:
+            try:
+                client = genai.Client(api_key=api_key_secret)
+                st.session_state.genai_client = client
+            except Exception as e:
+                st.error(f"Failed to initialize API client: {e}")
+                st.stop()
+        else:
+            st.error("API client not initialized. Please configure the API in the sidebar first.")
+            st.stop()
 
     # Build tab list based on user role
     if st.session_state.get("is_admin"):
