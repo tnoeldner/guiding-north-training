@@ -2240,15 +2240,26 @@ Be constructive and supportive in your evaluation."""
                 # Extract overall score from ai_analysis if available
                 overall_score = "N/A"
                 ai_analysis = assignment.get("ai_analysis", "")
-                if ai_analysis and "Overall Score:" in ai_analysis:
-                    # Extract the score from the analysis text
+                if ai_analysis:
+                    # Look for "Overall Score:" pattern and extract the number
                     for line in ai_analysis.split('\n'):
                         if "Overall Score:" in line:
-                            # Try to extract the first number from this line
-                            score_text = line.split("Overall Score:")[-1].strip()
-                            first_digit = next((char for char in score_text if char.isdigit()), None)
-                            if first_digit:
-                                overall_score = first_digit
+                            try:
+                                # Extract everything after "Overall Score:" and get the first number
+                                score_part = line.split("Overall Score:")[-1].strip()
+                                # Remove markdown asterisks and get just the numeric part
+                                score_part = score_part.replace("**", "").strip()
+                                # Find the first number (could be 1-5)
+                                score_num = ""
+                                for char in score_part:
+                                    if char.isdigit():
+                                        score_num += char
+                                    elif score_num:  # Stop when we hit a non-digit after finding a number
+                                        break
+                                if score_num:
+                                    overall_score = int(score_num)
+                            except (ValueError, IndexError):
+                                overall_score = "N/A"
                             break
                 
                 converted = {
