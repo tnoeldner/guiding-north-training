@@ -27,6 +27,7 @@ WEBSITE_KB_FILE = "und_housing_website.md"
 BEST_PRACTICES_FILE = "housing_best_practices.md"
 RESULTS_FILE = "results.json"
 USERS_FILE = "users.json"
+ASSIGNMENTS_FILE = "scenario_assignments.json"
 
 # --- Password Security Functions ---
 def hash_password(password):
@@ -145,6 +146,24 @@ def save_config(config_data):
         return True
     except Exception as e:
         st.error(f"Failed to save configuration: {e}")
+        return False
+
+def load_assignments():
+    """Loads scenario assignments from the JSON file."""
+    try:
+        with open(ASSIGNMENTS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"assignments": []}
+
+def save_assignments(data):
+    """Saves scenario assignments to the JSON file."""
+    try:
+        with open(ASSIGNMENTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
+        return True
+    except Exception as e:
+        st.error(f"Failed to save assignments: {e}")
         return False
 
 # Load initial configuration
@@ -532,31 +551,35 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             tab_names = [
                 "Scenario Simulator",
                 "Tone Polisher",
+                "Assign Scenarios",
                 "Pending Review",
                 "Guiding NORTH Framework",
                 "Org Chart",
                 "Results & Progress"
             ]
-            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_names)
-            pending_review_tab = tab3
-            framework_tab = tab4
-            org_chart_tab = tab5
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(tab_names)
+            assign_scenarios_tab = tab3
+            pending_review_tab = tab4
+            framework_tab = tab5
+            org_chart_tab = tab6
             config_tab = None
-            results_tab = tab6
+            results_tab = tab7
         else:
             tab_names = [
                 "Scenario Simulator",
                 "Tone Polisher",
+                "Assigned Scenarios",
                 "Guiding NORTH Framework",
                 "Org Chart",
                 "Results & Progress"
             ]
-            tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_names)
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_names)
             pending_review_tab = None
-            framework_tab = tab3
-            org_chart_tab = tab4
+            assigned_scenarios_tab = tab3
+            framework_tab = tab4
+            org_chart_tab = tab5
             config_tab = None
-            results_tab = tab5
+            results_tab = tab6
 
     with tab1:
         st.header("Scenario Simulator")
@@ -1183,6 +1206,112 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         else:
                             st.warning("Please provide your name before analyzing the call.")
 
+    # Assign Scenarios Tab - For Supervisors Only
+    if 'assign_scenarios_tab' in locals() and assign_scenarios_tab is not None:
+        with assign_scenarios_tab:
+            st.header("📤 Assign Scenarios to Staff")
+            st.write("Create and assign targeted training scenarios to your team members based on specific topics.")
+            
+            # Get supervisor's direct reports
+            direct_reports = st.session_state.get('direct_reports', [])
+            if not direct_reports:
+                st.warning("You don't have any direct reports to assign scenarios to.")
+            else:
+                # Create two columns for layout
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("Select Recipients")
+                    selected_staff = st.multiselect(
+                        "Choose staff members to receive the scenario:",
+                        options=direct_reports,
+                        key="assign_scenario_staff"
+                    )
+                    
+                with col2:
+                    st.subheader("Scenario Topic")
+                    scenario_topics = [
+                        "Roommate Conflict",
+                        "Noise Complaint",
+                        "Housing Policy Question",
+                        "Maintenance Request",
+                        "Room Change Request",
+                        "Lease Violation",
+                        "Guest Policy Issue",
+                        "Parking Problem",
+                        "Meeting Room Reservation",
+                        "Billing Question",
+                        "Community Standards",
+                        "Student Wellness Concern"
+                    ]
+                    selected_topic = st.selectbox(
+                        "Select the topic for the scenario:",
+                        options=scenario_topics,
+                        key="assign_scenario_topic"
+                    )
+                
+                # Generate scenario button
+                if st.button("Generate and Assign Scenario", key="generate_assign_scenario_btn"):
+                    if not selected_staff:
+                        st.error("Please select at least one staff member.")
+                    else:
+                        with st.spinner(f"Generating {selected_topic} scenario for {len(selected_staff)} staff member(s)..."):
+                            try:
+                                # Generate the scenario
+                                scenario_prompt = f"""Generate a realistic housing and residence life training scenario about: {selected_topic}
+
+The scenario should:
+- Be specific and include details about a student situation
+- Include a brief description of the problem
+- Require the staff member to apply the Guiding North Framework principles
+- Be appropriate for role-playing or discussion
+- Include relevant context (building, time of day, students involved, etc.)
+
+Format:
+SCENARIO TITLE: [Title]
+SITUATION: [Detailed scenario description]
+CONTEXT: [Relevant background information]
+YOUR TASK: [What the staff member should do]
+
+Keep the scenario concise but realistic."""
+
+                                # Call Gemini API
+                                client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY"))
+                                response = client.models.generate_content(
+                                    model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
+                                    contents=scenario_prompt
+                                )
+                                
+                                generated_scenario = response.text if response.text else "Unable to generate scenario"
+                                
+                                # Save the assignment
+                                assignments_data = load_assignments()
+                                
+                                for staff_email in selected_staff:
+                                    assignment = {
+                                        "id": f"{int(datetime.now().timestamp())}_{staff_email}",
+                                        "supervisor_email": st.session_state.get("email"),
+                                        "supervisor_name": f"{st.session_state.get('first_name')} {st.session_state.get('last_name')}",
+                                        "staff_email": staff_email,
+                                        "staff_name": load_users().get(staff_email, {}).get('first_name', 'Staff Member'),
+                                        "topic": selected_topic,
+                                        "scenario": generated_scenario,
+                                        "assigned_date": datetime.now().isoformat(),
+                                        "completed": False,
+                                        "response": None,
+                                        "response_date": None
+                                    }
+                                    assignments_data["assignments"].append(assignment)
+                                
+                                if save_assignments(assignments_data):
+                                    st.success(f"✅ Scenario assigned to {len(selected_staff)} staff member(s)!")
+                                    st.info("They will see the scenario in their \"Assigned Scenarios\" section.")
+                                else:
+                                    st.error("Failed to save the assignment.")
+                                    
+                            except Exception as e:
+                                st.error(f"Error generating scenario: {e}")
+
     # Pending Review Tab - For Supervisors Only
     if pending_review_tab is not None:
         with pending_review_tab:
@@ -1266,6 +1395,101 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     st.rerun()
                                 else:
                                     st.error("Failed to update scenario status.")
+
+    # Assigned Scenarios Tab - For Staff Only
+    if 'assigned_scenarios_tab' in locals() and assigned_scenarios_tab is not None:
+        with assigned_scenarios_tab:
+            st.header("📧 Assigned Training Scenarios")
+            st.write("Complete the training scenarios assigned to you by your supervisor.")
+            
+            # Load assignments for this staff member
+            assignments_data = load_assignments()
+            staff_email = st.session_state.get("email")
+            staff_role = st.session_state.get("position")
+            
+            # Filter assignments for this staff member
+            my_assignments = [
+                a for a in assignments_data.get("assignments", [])
+                if a.get("staff_email") == staff_email
+            ]
+            
+            if not my_assignments:
+                st.info("No assigned scenarios yet. Check back soon for new training assignments from your supervisor!")
+            else:
+                # Tabs for pending and completed
+                pending_tab, completed_tab = st.tabs(["Pending", "Completed"])
+                
+                with pending_tab:
+                    pending_assignments = [a for a in my_assignments if not a.get("completed", False)]
+                    
+                    if not pending_assignments:
+                        st.info("All assigned scenarios completed!")
+                    else:
+                        for assignment in pending_assignments:
+                            with st.expander(f"📋 {assignment.get('topic')} (Assigned by {assignment.get('supervisor_name')}) - {assignment.get('assigned_date', 'Unknown')[:10]}"):
+                                st.markdown("### Scenario:")
+                                st.markdown(assignment.get("scenario", "No scenario text"))
+                                
+                                st.markdown("---")
+                                st.markdown("### Your Response:")
+                                response_text = st.text_area(
+                                    "Describe how you would handle this scenario:",
+                                    value=assignment.get("response", ""),
+                                    height=200,
+                                    key=f"assignment_response_{assignment.get('id')}"
+                                )
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("Submit Response", key=f"submit_assignment_{assignment.get('id')}"):
+                                        if response_text.strip():
+                                            # Update assignment with response
+                                            assignments_data_updated = load_assignments()
+                                            for idx, a in enumerate(assignments_data_updated.get("assignments", [])):
+                                                if a.get("id") == assignment.get("id"):
+                                                    assignments_data_updated["assignments"][idx]["response"] = response_text
+                                                    assignments_data_updated["assignments"][idx]["response_date"] = datetime.now().isoformat()
+                                                    assignments_data_updated["assignments"][idx]["completed"] = True
+                                                    break
+                                            
+                                            if save_assignments(assignments_data_updated):
+                                                st.success("✅ Response submitted! Your supervisor will review it soon.")
+                                                st.rerun()
+                                            else:
+                                                st.error("Failed to save response.")
+                                        else:
+                                            st.warning("Please enter your response.")
+                                
+                                with col2:
+                                    if st.button("Delete Assignment", key=f"delete_assignment_{assignment.get('id')}"):
+                                        assignments_data_updated = load_assignments()
+                                        assignments_data_updated["assignments"] = [
+                                            a for a in assignments_data_updated.get("assignments", [])
+                                            if a.get("id") != assignment.get("id")
+                                        ]
+                                        if save_assignments(assignments_data_updated):
+                                            st.success("Assignment removed.")
+                                            st.rerun()
+                
+                with completed_tab:
+                    completed_assignments = [a for a in my_assignments if a.get("completed", False)]
+                    
+                    if not completed_assignments:
+                        st.info("No completed scenarios yet.")
+                    else:
+                        for assignment in completed_assignments:
+                            with st.expander(f"✅ {assignment.get('topic')} (Completed on {assignment.get('response_date', 'Unknown')[:10]})"):
+                                st.markdown("### Scenario:")
+                                st.markdown(assignment.get("scenario", "No scenario text"))
+                                
+                                st.markdown("---")
+                                st.markdown("### Your Response:")
+                                st.markdown(assignment.get("response", "No response"))
+                                
+                                if assignment.get("supervisor_feedback"):
+                                    st.markdown("---")
+                                    st.markdown("### Supervisor Feedback:")
+                                    st.info(assignment.get("supervisor_feedback"))
 
     # Guiding NORTH Framework Tab - Available to All Users
     with framework_tab:
