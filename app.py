@@ -29,6 +29,48 @@ RESULTS_FILE = "results.json"
 USERS_FILE = "users.json"
 ASSIGNMENTS_FILE = "scenario_assignments.json"
 
+# --- UND Housing Context for Realistic Scenarios ---
+UND_HOUSING_CONTEXT = """
+RESIDENCE HALLS AT UND:
+Suite Style (Shared bath between 2 rooms): McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall
+Community Style (Shared floor bath): Smith Hall, Johnstone Hall (Smith/Johnstone complex)
+Apartment Style (In-unit kitchen/bath): University Place, Swanson Hall
+
+APARTMENT LOCATIONS:
+Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, 3904 University Ave
+
+KEY POLICIES & PROCEDURES:
+- Guest Policy: Max 3 consecutive nights, 6 nights total per month, must be escorted 24/7, roommate consent required
+- Quiet Hours: Sun-Thu 10 PM-10 AM, Fri-Sat 12 AM-10 AM, Courtesy Hours 24/7
+- Lockout Fees: $10 during business hours, $25 after hours, $75 for lost key recore
+- Room Changes: Frozen first 2 weeks of semester, RD approval required, unauthorized moves incur $100+ fine
+- Alcohol/Drugs: Under 21 strictly prohibited, 21+ only in all-age rooms, no paraphernalia, no empty containers under 21
+- Guest Limit: Under 18 guests generally prohibited unless immediate family
+- Maintenance: Routine within 2 business days via portal, emergency calls RA on Duty after hours
+- Move-Out: 60-day notice required, residents must clean, $165 fine for modem removal
+
+HOUSING CONTACT INFORMATION:
+- Phone: 701.777.4251
+- Email: housing@UND.edu
+- Office Hours: Monday-Friday 8:00 AM - 4:30 PM
+- After-Hours Emergency: Contact RA on Duty
+
+HOUSING RATES (2025-2026):
+- Residence Hall Double: $5,100-$6,180/year (varies by hall)
+- Residence Hall Single: $5,900-$7,300/year
+- Apartments One Bedroom: $735-$845/month
+- Apartments Two Bedroom: $830-$935/month
+- Apartments Three Bedroom: $1,010-$1,400/month
+- Apartment utilities included: Internet, Water, Sewer, Trash (electricity separate)
+
+IMPORTANT PROCESSES:
+- First-year students required to live on campus (exemptions available)
+- Housing contracts: Full academic year for halls, flexible lease terms for apartments
+- Wilkerson Service Center handles mail, packages, and key checkouts
+- Housing Self-Service portal for applications and requests
+- Room changes based on availability offered on Wednesdays
+"""
+
 # --- Password Security Functions ---
 def hash_password(password):
     """Hash a password with a salt for secure storage."""
@@ -666,13 +708,24 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 ---
                 {role_specific_guidance}
 
+                **UND Housing Information (Use to Make Scenarios Realistic):**
+                ---
+                {UND_HOUSING_CONTEXT}
+                ---
+
                 **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic scenario for a '{selected_role}'.
                 
                 **Critical Requirements:**
                 1. **Difficulty Level:** {difficulty}
                 2. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
-                3. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
-                4. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
+                3. **UND Housing Realism:** 
+                   - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
+                   - Include real UND policies (quiet hours, guest limits, alcohol rules, lockout fees, room change procedures, maintenance protocols)
+                   - Use authentic fee amounts ($10/$25 lockout fees, $75 key recore, $100+ unauthorized move fines, $165 modem fine, $5,100-$6,180 annual hall costs, apartment rates)
+                   - Reference real resources (Wilkerson Service Center, Housing Self-Service portal, RA on Duty)
+                   - Make scenarios feel like actual situations at UND Housing & Residence Life
+                4. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
+                5. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
                    - Roommate mediation and conflict resolution
                    - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
                    - Mental health concerns and wellness referrals
@@ -1314,23 +1367,31 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                 # Generate the scenario
                                 scenario_prompt = f"""Generate a realistic housing and residence life training scenario for the role: {selected_role}.
 
-The scenario topic is: {selected_topic}
-Difficulty: {difficulty}
+SCENARIO REQUIREMENTS:
+Topic: {selected_topic}
+Difficulty: {difficulty} (adjust complexity and sensitivity accordingly)
+
+USE THIS AUTHENTIC UND HOUSING INFORMATION:
+{UND_HOUSING_CONTEXT}
 
 The scenario should:
-- Be specific and include all relevant details (building, time of day, students involved, etc.)
-- Include relevant context woven into the scenario (do not separate context)
-- Include a brief description of the problem
+- Reference real UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
+- Include authentic UND policies on quiet hours, guest limits, alcohol, lockouts, room changes, maintenance procedures
+- Use realistic fee amounts ($10/$25 lockout fees, $75 key recore, $100+ unauthorized move fine, $165 modem removal fine)
+- Reference actual housing rates or the Wilkerson Service Center
+- Include specific times, dates, and building details to make it immersive
+- Feature real student scenarios a {selected_role} would actually handle
 - Require the staff member to apply the Guiding North Framework principles
 - Be appropriate for role-playing or discussion
 - Be tailored to the responsibilities and perspective of a {selected_role}
+- Include all relevant context woven into the scenario (no separate context section)
 
 Format:
-SCENARIO TITLE: [Title]
-SITUATION: [Detailed scenario description with all relevant context and details included]
-YOUR TASK: [What the {selected_role} should do]
+SCENARIO TITLE: [Realistic, specific title]
+SITUATION: [Detailed scenario with all relevant context included - mention specific building, time, fees, policies, student names if applicable]
+YOUR TASK: [What the {selected_role} should do to handle this situation]
 
-Keep the scenario concise but realistic. All context should be embedded within the situation."""
+Keep the scenario concise but realistic. Make it feel like an actual situation they would encounter at UND Housing & Residence Life."""
 
                                 # Call Gemini API (use configured client)
                                 client = st.session_state.get('genai_client')
