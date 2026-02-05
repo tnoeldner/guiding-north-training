@@ -2629,7 +2629,9 @@ Be constructive and supportive in your evaluation."""
                                 if st.session_state.get('is_admin'):
                                     st.markdown("---")
                                     delete_key = (
-                                        f"delete_result_{result.get('_result_index', 'na')}_"
+                                        f"delete_result_{role_name}_"
+                                        f"{i}_"
+                                        f"{result.get('_result_index', 'na')}_"
                                         f"{result.get('assignment_id', 'na')}_"
                                         f"{result.get('timestamp', 'na')}_"
                                         f"{result.get('email', 'na')}"
