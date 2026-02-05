@@ -1214,10 +1214,27 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             st.header("📤 Assign Scenarios to Staff")
             st.write("Create and assign targeted training scenarios to your team members based on specific topics.")
             
-            # Get supervisor's direct reports (roles)
-            direct_reports = st.session_state.get('direct_reports', [])
-            if not direct_reports:
-                st.warning("You don't have any direct reports to assign scenarios to.")
+            # Get supervisor's direct and indirect reports (roles)
+            def get_subordinate_roles(role_name, edges, visited=None):
+                if visited is None:
+                    visited = set()
+                if role_name in visited:
+                    return visited
+                visited.add(role_name)
+
+                for edge in edges:
+                    if edge.get('target') == role_name:
+                        visited.update(get_subordinate_roles(edge['source'], edges, visited))
+                return visited
+
+            if st.session_state.get("is_admin"):
+                report_roles = list(STAFF_ROLES.keys())
+            else:
+                supervisor_role = st.session_state.get("position")
+                report_roles = list(get_subordinate_roles(supervisor_role, ORG_CHART.get('edges', [])))
+
+            if not report_roles:
+                st.warning("You don't have any reports to assign scenarios to.")
             else:
                 # Create two columns for layout
                 col1, col2 = st.columns(2)
@@ -1226,7 +1243,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                     st.subheader("Select Recipients")
                     selected_role = st.selectbox(
                         "Select a role:",
-                        options=direct_reports,
+                        options=sorted(report_roles),
                         key="assign_scenario_role"
                     )
 
