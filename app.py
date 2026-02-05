@@ -838,14 +838,14 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         - **User's Response:** {user_response}
 
                         **Task:** Evaluate the user's response using the 'Evaluation Rubric' from the framework document. 
-                        1. Provide an 'Overall Score' from 1 (Needs Improvement) to 5 (Exemplary).
+                        1. Provide an 'Overall Score' from 1 (Needs Improvement) to 4 (Exemplary).
                         2. For each of the five pillars (N, O, R, T, H), assign a rating (Needs Development, Proficient, or Exemplary) and provide a brief justification for your rating, citing specific examples from the user's response. 
                         3. Conclude with a full, detailed 'Exemplary Response Example' that demonstrates how a top-performing staff member would have handled the interaction from start to finish.
 
                         **Output Format (Strict):**
                         ### Guiding NORTH Evaluation:
 
-                        **Overall Score:** [Your 1-5 Rating]
+                        **Overall Score:** [Your 1-4 Rating]
 
                         ---
 
@@ -1040,7 +1040,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             - **Call Transcript:** {call_transcript}
 
                             **Task:** Evaluate the staff member's phone call performance using the 'Evaluation Rubric' from the framework document.
-                            1. Provide an 'Overall Score' from 1 (Needs Improvement) to 5 (Exemplary).
+                            1. Provide an 'Overall Score' from 1 (Needs Improvement) to 4 (Exemplary).
                             2. For each of the five pillars (N, O, R, T, H), assign a rating (Needs Development, Proficient, or Exemplary) and provide a brief justification for your rating, citing specific examples from the call transcript.
                             3. Provide specific suggestions for improvement where applicable.
                             4. Conclude with a full, detailed 'Exemplary Call Example' that demonstrates how a top-performing staff member would have handled the call from start to finish.
@@ -1048,7 +1048,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             **Output Format (Strict):**
                             ### Guiding NORTH Evaluation:
 
-                            **Overall Score:** [Your 1-5 Rating]
+                            **Overall Score:** [Your 1-4 Rating]
 
                             ---
 
@@ -1203,7 +1203,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     **Task:** 
                                     1. First, provide a complete transcript of the phone call.
                                     2. Then, evaluate the staff member's phone call performance using the 'Evaluation Rubric' from the framework document.
-                                    3. Provide an 'Overall Score' from 1 (Needs Improvement) to 5 (Exemplary).
+                                    3. Provide an 'Overall Score' from 1 (Needs Improvement) to 4 (Exemplary).
                                     4. For each of the five pillars (N, O, R, T, H), assign a rating (Needs Development, Proficient, or Exemplary) and provide a brief justification for your rating, citing specific examples from the call.
                                     5. Provide specific suggestions for improvement where applicable.
                                     6. Conclude with a full, detailed 'Exemplary Call Example' that demonstrates how a top-performing staff member would have handled the call from start to finish.
@@ -1216,7 +1216,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
                                     ### Guiding NORTH Evaluation:
 
-                                    **Overall Score:** [Your 1-5 Rating]
+                                    **Overall Score:** [Your 1-4 Rating]
 
                                     ---
 
@@ -1694,7 +1694,7 @@ Keep the scenario concise but realistic. Make it feel like an actual situation t
 Please provide:
 1. Strengths of the response
 2. Areas for improvement
-3. Overall assessment using the rubric: Needs Development (1) | Proficient (3) | Exemplary (5)
+3. Overall assessment using the rubric: Needs Development (1) | Proficient (3) | Exemplary (4)
 4. Specific recommendations for growth
 
 Be constructive and supportive in your evaluation."""
@@ -1857,7 +1857,7 @@ Be constructive and supportive in your evaluation."""
                 "Meets 24h deadline; accurate/verified info",
                 "Clarifies next steps; uses guides/FAQs"
             ],
-            "Exemplary (5)": [
+            "Exemplary (4)": [
                 "Anticipates unstated needs; defuses tension",
                 "Proactively resolves future issues",
                 "Exceptional warmth; transforms negatives",
@@ -2246,7 +2246,7 @@ Be constructive and supportive in your evaluation."""
                     rating_map = {
                         "needs development": "1",
                         "proficient": "3",
-                        "exemplary": "5"
+                        "exemplary": "4"
                     }
 
                     lines = ai_analysis.splitlines()
@@ -2261,7 +2261,7 @@ Be constructive and supportive in your evaluation."""
                             continue
 
                         if any(token in lower_line for token in ["overall score:", "overall assessment:", "overall rating:"]):
-                            match = re.search(r"\b([1-5])\b", cleaned)
+                            match = re.search(r"\b([1-4])\b", cleaned)
                             if match:
                                 overall_score = match.group(1)
                                 break
@@ -2387,7 +2387,7 @@ Be constructive and supportive in your evaluation."""
                         with col1:
                             if scores:
                                 avg_score = sum(scores) / len(scores)
-                                st.metric(label="Your Average Score", value=f"{avg_score:.2f} / 5")
+                                st.metric(label="Your Average Score", value=f"{avg_score:.2f} / 4")
                             else:
                                 st.metric(label="Your Average Score", value="N/A")
                         
@@ -2475,7 +2475,7 @@ Be constructive and supportive in your evaluation."""
                             fig.update_layout(
                                 title="Score Progression with Trendline",
                                 xaxis_title="Attempt Number",
-                                yaxis_title="Score (out of 5)",
+                                yaxis_title="Score (out of 4)",
                                 hovermode='x unified',
                                 height=400,
                                 yaxis=dict(range=[0, 5])
