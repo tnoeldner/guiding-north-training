@@ -2238,28 +2238,39 @@ Be constructive and supportive in your evaluation."""
                 last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
                 
                 # Extract overall score from ai_analysis if available
-                overall_score = "N/A"
+                overall_score = assignment.get("overall_score", "N/A")
                 ai_analysis = assignment.get("ai_analysis", "")
-                if ai_analysis:
-                    # Look for "Overall Score:" pattern and extract the number
-                    for line in ai_analysis.split('\n'):
-                        if "Overall Score:" in line:
-                            try:
-                                # Extract everything after "Overall Score:" and get the first number
-                                score_part = line.split("Overall Score:")[-1].strip()
-                                # Remove markdown asterisks and get just the numeric part
-                                score_part = score_part.replace("**", "").strip()
-                                # Find the first number (could be 1-5)
-                                score_num = ""
-                                for char in score_part:
-                                    if char.isdigit():
-                                        score_num += char
-                                    elif score_num:  # Stop when we hit a non-digit after finding a number
-                                        break
-                                if score_num:
-                                    overall_score = int(score_num)
-                            except (ValueError, IndexError):
-                                overall_score = "N/A"
+                if (not overall_score or str(overall_score).strip() in ["N/A", "Not Found", "Parse Error"]) and ai_analysis:
+                    import re
+
+                    rating_map = {
+                        "needs development": "1",
+                        "proficient": "3",
+                        "exemplary": "4"
+                    }
+
+                    lines = ai_analysis.splitlines()
+                    overall_lines = [
+                        line for line in lines
+                        if "overall" in line.lower()
+                        and ("score" in line.lower() or "assessment" in line.lower() or "rating" in line.lower())
+                    ]
+
+                    for line in overall_lines:
+                        # Remove markdown asterisks and search for a score digit
+                        cleaned = line.replace("**", "").strip()
+                        match = re.search(r"([1-5])", cleaned)
+                        if match:
+                            overall_score = match.group(1)
+                            break
+
+                        # Fallback: map rating words to numeric scores
+                        lower_line = cleaned.lower()
+                        for key, value in rating_map.items():
+                            if key in lower_line:
+                                overall_score = value
+                                break
+                        if str(overall_score).isdigit():
                             break
                 
                 converted = {
