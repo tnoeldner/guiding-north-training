@@ -2248,7 +2248,11 @@ Be constructive and supportive in your evaluation."""
                     "evaluation": assignment.get("ai_analysis", "N/A"),
                     "overall_score": "N/A",
                     "status": "completed",
-                    "is_assigned": True
+                    "is_assigned": True,
+                    "supervisor_notes": assignment.get("supervisor_feedback", ""),
+                    "supervisor_feedback": assignment.get("supervisor_feedback", ""),
+                    "reviewed_by": assignment.get("reviewed_by", ""),
+                    "review_date": assignment.get("review_date", "")
                 }
                 completed_results.append(converted)
 
