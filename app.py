@@ -1896,6 +1896,10 @@ Be constructive and supportive in your evaluation."""
         st.header("Organizational Chart")
         st.write("Visualizing the reporting structure of your department.")
 
+        st.subheader("Display Settings")
+        chart_width = st.slider("Chart Width (px)", min_value=600, max_value=1800, value=1200, step=50)
+        chart_height = st.slider("Chart Height (px)", min_value=400, max_value=1400, value=700, step=50)
+
         # Reload latest config for org chart display
         latest_config = load_config()
         display_org_chart = latest_config.get('org_chart', {'nodes': [], 'edges': []})
@@ -1904,15 +1908,35 @@ Be constructive and supportive in your evaluation."""
         # Update nodes from staff roles (but DON'T save automatically)
         display_org_chart['nodes'] = list(display_staff_roles.keys())
 
+        # Build role -> names mapping (supports multiple people per role)
+        users_db_for_chart = load_users()
+        role_to_names = {}
+        for email, user_data in users_db_for_chart.items():
+            role = user_data.get("position")
+            if not role:
+                continue
+            name = f"{user_data.get('first_name', '').strip()} {user_data.get('last_name', '').strip()}".strip()
+            if not name:
+                name = email
+            role_to_names.setdefault(role, []).append(name)
+
         if not display_org_chart['nodes']:
             st.warning("No staff roles defined. Please add roles in the Configuration tab to build the chart.")
         else:
-            nodes = [Node(id=role, label=role, size=25) for role in display_org_chart['nodes']]
+            nodes = []
+            for role in display_org_chart['nodes']:
+                names = role_to_names.get(role, [])
+                if names:
+                    names_sorted = sorted(names)
+                    label = f"{role}\n" + "\n".join(names_sorted)
+                else:
+                    label = role
+                nodes.append(Node(id=role, label=label, size=25))
             edges = [Edge(source=edge['source'], target=edge['target'], label="reports to") for edge in display_org_chart.get('edges', [])]
             
             agraph_config = Config(
-                width=750, 
-                height=500, 
+                width=chart_width, 
+                height=chart_height, 
                 directed=True, 
                 physics=False,  # Disable physics for fixed positions
                 hierarchical=True,  # Enable hierarchical layout for org charts
