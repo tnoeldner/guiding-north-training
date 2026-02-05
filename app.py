@@ -640,10 +640,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         if selected_role not in STAFF_ROLES:
             st.warning("Selected role is not configured. Please update roles in the Configuration tab.")
             st.stop()
-        difficulty = st.selectbox(
-            "Scenario Difficulty:",
-            ["Easier than average", "Average", "Harder than average"],
-            key="difficulty_selector"
+        contact_type = st.selectbox(
+            "Type of Customer Contact:",
+            ["Email", "In Person Question", "Phone Call", "On-Call Situation"],
+            key="contact_type_selector"
         )
 
         if "scenario" not in st.session_state:
@@ -725,7 +725,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic scenario for a '{selected_role}'.
                 
                 **Critical Requirements:**
-                1. **Difficulty Level:** {difficulty}
+                1. **Contact Type:** {contact_type}
                 2. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
                 3. **UND Housing Realism:** 
                    - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
@@ -751,6 +751,8 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                    - Housing reassignment or room change requests
                    - Policy clarification and resident concerns
                    - Staff or student complaints
+                7. **Format:** Present the scenario appropriately for the {contact_type} contact method (e.g., as an email, a phone call transcript, an in-person conversation, or an urgent after-hours situation)
+                8. **No Meta-Commentary:** Do NOT include any sentence explaining why the scenario is difficult or what makes it a {contact_type} scenario. Simply present the scenario naturally.
 
                 **Previous Scenario Details (for diversity checking only):**
                 {last_scenario_text}
