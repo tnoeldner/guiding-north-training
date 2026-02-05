@@ -1397,11 +1397,21 @@ Keep the scenario concise but realistic."""
                 (idx, r) for idx, r in enumerate(all_results) 
                 if r.get('status') == 'pending' and r.get('email') in visible_users
             ]
+
+            # Load assigned scenarios and filter for pending review
+            assignments_data = load_assignments()
+            pending_assignments = [
+                (idx, a) for idx, a in enumerate(assignments_data.get("assignments", []))
+                if a.get("completed")
+                and not a.get("reviewed")
+                and a.get("staff_email") in visible_users
+            ]
             
-            if not pending_results:
+            if not pending_results and not pending_assignments:
                 st.success("✅ All scenarios have been reviewed!")
             else:
-                st.warning(f"⚠️ {len(pending_results)} scenarios pending your review")
+                pending_count = len(pending_results) + len(pending_assignments)
+                st.warning(f"⚠️ {pending_count} scenarios pending your review")
                 
                 for idx, result in pending_results:
                     with st.expander(
@@ -1457,6 +1467,50 @@ Keep the scenario concise but realistic."""
                                     st.rerun()
                                 else:
                                     st.error("Failed to update scenario status.")
+
+                if pending_assignments:
+                    st.divider()
+                    st.subheader("📧 Assigned Scenarios Pending Review")
+
+                    for idx, assignment in pending_assignments:
+                        staff_display = assignment.get("staff_name") or assignment.get("staff_email")
+                        assigned_date = assignment.get("assigned_date", "N/A")[:10]
+                        with st.expander(
+                            f"📌 {staff_display} - {assignment.get('topic')} (Assigned {assigned_date})",
+                            expanded=False
+                        ):
+                            st.markdown(f"**Staff Email:** {assignment.get('staff_email', 'N/A')}")
+                            st.markdown(f"**Topic:** {assignment.get('topic', 'N/A')}")
+                            st.markdown(f"**Assigned By:** {assignment.get('supervisor_name', 'N/A')}")
+                            st.markdown(f"**Submitted:** {assignment.get('response_date', 'N/A')[:16]}")
+
+                            st.subheader("📋 Scenario")
+                            st.info(assignment.get("scenario", "N/A"))
+
+                            st.subheader("✍️ Staff Response")
+                            st.warning(assignment.get("response", "N/A"))
+
+                            st.subheader("Supervisor Review")
+                            supervisor_feedback = st.text_area(
+                                "Add supervisor feedback (optional):",
+                                value=assignment.get("supervisor_feedback", ""),
+                                height=100,
+                                key=f"assign_feedback_{idx}_{assignment.get('staff_email')}"
+                            )
+
+                            if st.button("✅ Mark Assigned Scenario as Reviewed", key=f"assign_review_{idx}_{assignment.get('staff_email')}"):
+                                assignments_data_updated = load_assignments()
+                                if 0 <= idx < len(assignments_data_updated.get("assignments", [])):
+                                    assignments_data_updated["assignments"][idx]["reviewed"] = True
+                                    assignments_data_updated["assignments"][idx]["reviewed_by"] = st.session_state.email
+                                    assignments_data_updated["assignments"][idx]["review_date"] = datetime.now().isoformat()
+                                    assignments_data_updated["assignments"][idx]["supervisor_feedback"] = supervisor_feedback
+
+                                    if save_assignments(assignments_data_updated):
+                                        st.success("✅ Assigned scenario marked as reviewed!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to update assigned scenario status.")
 
     # Assigned Scenarios Tab - For Staff Only
     if 'assigned_scenarios_tab' in locals() and assigned_scenarios_tab is not None:
