@@ -2230,7 +2230,7 @@ Be constructive and supportive in your evaluation."""
                     continue
 
                 if any(token in lower_line for token in ["overall score", "overall assessment", "overall rating"]):
-                    match = re.search(r"\b([1-4])\b", cleaned)
+                    match = re.search(r"overall\s+(?:score|assessment|rating)[^0-9]*([1-4])", lower_line)
                     if match:
                         return match.group(1)
 
@@ -2238,14 +2238,13 @@ Be constructive and supportive in your evaluation."""
                         if key in lower_line:
                             return value
 
-            overall_match = re.search(r"overall[^\n]{0,60}\b([1-4])\b", text, flags=re.IGNORECASE)
-            if overall_match:
-                return overall_match.group(1)
-
-            lower_text = text.lower()
-            for key, value in rating_map.items():
-                if key in lower_text:
-                    return value
+            overall_word_match = re.search(
+                r"overall[^\n]{0,60}(needs development|proficient|exemplary)",
+                text,
+                flags=re.IGNORECASE
+            )
+            if overall_word_match:
+                return rating_map.get(overall_word_match.group(1).lower())
 
             return None
 
