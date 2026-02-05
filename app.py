@@ -1,6 +1,6 @@
 import streamlit as st
-import google.genai as genai
-from google.genai import types
+import google.generativeai as genai
+from google.generativeai import types
 import json
 import random
 import io
@@ -2232,9 +2232,19 @@ Be constructive and supportive in your evaluation."""
                 if not staff_name or staff_name == "Staff Member":
                     staff_name = staff_email.split("@")[0].replace(".", " ").title() if "@" in staff_email else staff_email
                 
-                name_parts = staff_name.split()
-                first_name = name_parts[0] if len(name_parts) > 0 else "Unknown"
-                last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+                # Extract overall score from ai_analysis if available
+                overall_score = "N/A"
+                ai_analysis = assignment.get("ai_analysis", "")
+                if ai_analysis and "Overall Score:" in ai_analysis:
+                    # Extract the score from the analysis text
+                    for line in ai_analysis.split('\n'):
+                        if "Overall Score:" in line:
+                            # Try to extract the first number from this line
+                            score_text = line.split("Overall Score:")[-1].strip()
+                            first_digit = next((char for char in score_text if char.isdigit()), None)
+                            if first_digit:
+                                overall_score = first_digit
+                            break
                 
                 converted = {
                     "first_name": first_name,
@@ -2246,7 +2256,7 @@ Be constructive and supportive in your evaluation."""
                     "scenario": assignment.get("scenario", "N/A"),
                     "user_response": assignment.get("response", "N/A"),
                     "evaluation": assignment.get("ai_analysis", "N/A"),
-                    "overall_score": "N/A",
+                    "overall_score": overall_score,
                     "status": "completed",
                     "is_assigned": True,
                     "supervisor_notes": assignment.get("supervisor_feedback", ""),
