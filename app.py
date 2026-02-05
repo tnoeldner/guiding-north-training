@@ -1416,7 +1416,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
 SCENARIO REQUIREMENTS:
 Topic: {selected_topic}
-Difficulty: {difficulty} (adjust complexity and sensitivity accordingly)
+Difficulty: {difficulty}
 
 USE THIS AUTHENTIC UND HOUSING INFORMATION:
 {UND_HOUSING_CONTEXT}
@@ -1439,7 +1439,7 @@ SCENARIO TITLE: [Realistic, specific title]
 SITUATION: [Detailed scenario with all relevant context included - mention specific building, time, fees, policies, student names if applicable]
 YOUR TASK: [What the {selected_role} should do to handle this situation]
 
-Keep the scenario concise but realistic. Make it feel like an actual situation they would encounter at UND Housing & Residence Life."""
+Do NOT include any explanation about why this scenario is difficult or what makes it a {difficulty} scenario. Simply present the scenario naturally."""
 
                                 # Call Gemini API (use configured client)
                                 client = st.session_state.get('genai_client')
