@@ -648,10 +648,16 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         if "evaluation" not in st.session_state:
             st.session_state.evaluation = ""
 
+        if "last_building" not in st.session_state:
+            st.session_state.last_building = None
+        if "building_history" not in st.session_state:
+            st.session_state.building_history = []
+
         if st.button("🎲 Generate New Scenario", key="generate_scenario_button"):
             with st.spinner("Generating a new scenario..."):
                 role_info = STAFF_ROLES[selected_role]
                 last_scenario_text = st.session_state.scenario.strip() if st.session_state.scenario else "None"
+                building_history_text = ", ".join(st.session_state.building_history[-5:]) if st.session_state.building_history else "None"
                 
                 # Build role-specific scenario guidance
                 role_specific_guidance = ""
@@ -725,7 +731,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                    - Reference real resources (Wilkerson Service Center, Housing Self-Service portal, RA on Duty)
                    - Make scenarios feel like actual situations at UND Housing & Residence Life
                 4. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
-                5. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
+                5. **Building/Location Variety:** IMPORTANT - Do NOT repeat the same building as the previous scenario. Vary buildings across all available options:
+                   - Residence Halls: McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall, Smith Hall, Johnstone Hall, University Place, Swanson Hall
+                   - Apartments: Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, 3904 University Ave
+                   - Each scenario should use a DIFFERENT building/location from the previous scenario to ensure comprehensive campus coverage
+                6. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
                    - Roommate mediation and conflict resolution
                    - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
                    - Mental health concerns and wellness referrals
@@ -740,6 +750,12 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
                 **Previous Scenario Details (for diversity checking only):**
                 {last_scenario_text}
+
+                **Recent Building Locations Used (avoid repeating these):**
+                {building_history_text}
+
+                **CRITICAL - Building Selection Instructions:**
+                You MUST select a building/location that has NOT been used in recent scenarios. The scenario MUST mention the specific building name (e.g., "In McVey Hall," "At Berkeley Drive Apartments," etc.). Each new scenario must use a different building to ensure comprehensive coverage of all UND Housing locations.
 
                 The scenario should be a full, detailed paragraph that is realistic and something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework. Include the student's name, specific details, and contextual information to make it engaging and appropriately challenging for the selected difficulty level.
                 """
@@ -756,6 +772,21 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                     st.session_state.evaluation = "" # Clear previous evaluation
                 except Exception as e:
                     st.error(f"Error generating scenario: {e}")
+                
+                # Extract and track building name from scenario
+                if st.session_state.scenario:
+                    import re
+                    buildings = [
+                        "McVey Hall", "West Hall", "Brannon Hall", "Noren Hall", "Selke Hall",
+                        "Smith Hall", "Johnstone Hall", "University Place", "Swanson Hall",
+                        "Berkeley Drive", "Carleton Court", "Hamline Square", "Mt. Vernon",
+                        "Williamsburg", "Swanson Complex", "Tulane Court", "Virginia Rose", "3904 University Ave"
+                    ]
+                    for building in buildings:
+                        if building in st.session_state.scenario:
+                            if building not in st.session_state.building_history:
+                                st.session_state.building_history.append(building)
+                            break
 
         if st.session_state.scenario:
             st.info(f"**Your Scenario:**\n\n{st.session_state.scenario}")
@@ -1385,6 +1416,7 @@ The scenario should:
 - Be appropriate for role-playing or discussion
 - Be tailored to the responsibilities and perspective of a {selected_role}
 - Include all relevant context woven into the scenario (no separate context section)
+- Use ALL available residence halls and apartments: Vary the location across McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall, Smith Hall, Johnstone Hall, University Place, Swanson Hall, Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, and 3904 University Ave
 
 Format:
 SCENARIO TITLE: [Realistic, specific title]
