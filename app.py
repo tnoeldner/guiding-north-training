@@ -1318,20 +1318,19 @@ The scenario topic is: {selected_topic}
 Difficulty: {difficulty}
 
 The scenario should:
-- Be specific and include details about a student situation
+- Be specific and include all relevant details (building, time of day, students involved, etc.)
+- Include relevant context woven into the scenario (do not separate context)
 - Include a brief description of the problem
 - Require the staff member to apply the Guiding North Framework principles
 - Be appropriate for role-playing or discussion
-- Include relevant context (building, time of day, students involved, etc.)
 - Be tailored to the responsibilities and perspective of a {selected_role}
 
 Format:
 SCENARIO TITLE: [Title]
-SITUATION: [Detailed scenario description]
-CONTEXT: [Relevant background information]
+SITUATION: [Detailed scenario description with all relevant context and details included]
 YOUR TASK: [What the {selected_role} should do]
 
-Keep the scenario concise but realistic."""
+Keep the scenario concise but realistic. All context should be embedded within the situation."""
 
                                 # Call Gemini API (use configured client)
                                 client = st.session_state.get('genai_client')
