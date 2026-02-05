@@ -53,7 +53,7 @@ def validate_email(email):
 def load_users():
     """Loads user accounts and passwords from JSON."""
     try:
-        with open(USERS_FILE, 'r') as f:
+        with open(USERS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
@@ -61,7 +61,7 @@ def load_users():
 def save_users(users_data):
     """Saves user accounts to JSON."""
     try:
-        with open(USERS_FILE, 'w') as f:
+        with open(USERS_FILE, 'w', encoding='utf-8') as f:
             json.dump(users_data, f, indent=4)
         return True
     except Exception as e:
@@ -107,7 +107,7 @@ def load_best_practices():
 def load_results():
     """Loads the results from the JSON file."""
     try:
-        with open(RESULTS_FILE, 'r') as f:
+        with open(RESULTS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
@@ -115,7 +115,7 @@ def load_results():
 def save_results(data):
     """Saves the results to the JSON file."""
     try:
-        with open(RESULTS_FILE, 'w') as f:
+        with open(RESULTS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4)
         return True
     except Exception as e:
@@ -125,7 +125,7 @@ def save_results(data):
 def load_config():
     """Loads the configuration from the JSON file."""
     try:
-        with open(CONFIG_FILE, 'r') as f:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
             # Ensure org_chart key exists
             if 'org_chart' not in config_data:
@@ -140,7 +140,7 @@ def load_config():
 def save_config(config_data):
     """Saves the configuration to config.json."""
     try:
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, indent=4)
         return True
     except Exception as e:
@@ -1417,10 +1417,8 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         display_org_chart = latest_config.get('org_chart', {'nodes': [], 'edges': []})
         display_staff_roles = latest_config.get('staff_roles', {})
         
-        # Update nodes from staff roles
+        # Update nodes from staff roles (but DON'T save automatically)
         display_org_chart['nodes'] = list(display_staff_roles.keys())
-        latest_config['org_chart'] = display_org_chart
-        save_config(latest_config)
 
         if not display_org_chart['nodes']:
             st.warning("No staff roles defined. Please add roles in the Configuration tab to build the chart.")
