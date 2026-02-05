@@ -2628,7 +2628,13 @@ Be constructive and supportive in your evaluation."""
 
                                 if st.session_state.get('is_admin'):
                                     st.markdown("---")
-                                    if st.button("Delete Result", key=f"delete_result_{result.get('email', 'NA')}_{i}"):
+                                    delete_key = (
+                                        f"delete_result_{result.get('_result_index', 'na')}_"
+                                        f"{result.get('assignment_id', 'na')}_"
+                                        f"{result.get('timestamp', 'na')}_"
+                                        f"{result.get('email', 'na')}"
+                                    )
+                                    if st.button("Delete Result", key=delete_key):
                                         if result.get("is_assigned") and result.get("assignment_id"):
                                             assignments_data_updated = load_assignments()
                                             assignments_data_updated["assignments"] = [
