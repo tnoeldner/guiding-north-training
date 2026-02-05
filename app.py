@@ -1323,8 +1323,12 @@ YOUR TASK: [What the staff member should do]
 
 Keep the scenario concise but realistic."""
 
-                                # Call Gemini API
-                                client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY"))
+                                # Call Gemini API (use configured client)
+                                client = st.session_state.get('genai_client')
+                                if not client:
+                                    st.error("Gemini API is not configured. Please initialize it in the sidebar.")
+                                    st.stop()
+
                                 response = client.models.generate_content(
                                     model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
                                     contents=scenario_prompt
