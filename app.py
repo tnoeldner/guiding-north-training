@@ -845,6 +845,8 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         **Output Format (Strict):**
                         ### Guiding NORTH Evaluation:
 
+                        OVERALL_SCORE: [Your 1-4 Rating]
+
                         **Overall Score:** [Your 1-4 Rating]
 
                         ---
@@ -1048,6 +1050,8 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             **Output Format (Strict):**
                             ### Guiding NORTH Evaluation:
 
+                            OVERALL_SCORE: [Your 1-4 Rating]
+
                             **Overall Score:** [Your 1-4 Rating]
 
                             ---
@@ -1215,6 +1219,8 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     ---
 
                                     ### Guiding NORTH Evaluation:
+
+                                    OVERALL_SCORE: [Your 1-4 Rating]
 
                                     **Overall Score:** [Your 1-4 Rating]
 
@@ -1696,6 +1702,7 @@ Please provide:
 2. Areas for improvement
 3. Overall assessment using the rubric: Needs Development (1) | Proficient (3) | Exemplary (4)
 4. Specific recommendations for growth
+5. A single line exactly in this format: OVERALL_SCORE: X (where X is 1-4)
 
 Be constructive and supportive in your evaluation."""
 
@@ -2249,29 +2256,35 @@ Be constructive and supportive in your evaluation."""
                         "exemplary": "4"
                     }
 
+                    # First, look for explicit OVERALL_SCORE line
+                    explicit_match = re.search(r"^OVERALL_SCORE\s*:\s*([1-4])\b", ai_analysis, flags=re.MULTILINE)
+                    if explicit_match:
+                        overall_score = explicit_match.group(1)
+
                     lines = ai_analysis.splitlines()
-                    for line in lines:
-                        cleaned = line.replace("**", "").strip()
-                        lower_line = cleaned.lower()
+                    if not str(overall_score).isdigit():
+                        for line in lines:
+                            cleaned = line.replace("**", "").strip()
+                            lower_line = cleaned.lower()
 
-                        if "overall" not in lower_line:
-                            continue
+                            if "overall" not in lower_line:
+                                continue
 
-                        if "using the rubric" in lower_line or "provide" in lower_line:
-                            continue
+                            if "using the rubric" in lower_line or "provide" in lower_line:
+                                continue
 
-                        if any(token in lower_line for token in ["overall score", "overall assessment", "overall rating"]):
-                            match = re.search(r"\b([1-4])\b", cleaned)
-                            if match:
-                                overall_score = match.group(1)
-                                break
-
-                            for key, value in rating_map.items():
-                                if key in lower_line:
-                                    overall_score = value
+                            if any(token in lower_line for token in ["overall score", "overall assessment", "overall rating"]):
+                                match = re.search(r"\b([1-4])\b", cleaned)
+                                if match:
+                                    overall_score = match.group(1)
                                     break
-                            if str(overall_score).isdigit():
-                                break
+
+                                for key, value in rating_map.items():
+                                    if key in lower_line:
+                                        overall_score = value
+                                        break
+                                if str(overall_score).isdigit():
+                                    break
 
                     # Fallback: search the full analysis for an overall line with a score
                     if not str(overall_score).isdigit():
