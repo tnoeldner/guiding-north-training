@@ -1150,9 +1150,13 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         if call_first_name_clean and call_last_name_clean:
                             with st.spinner("Processing audio and analyzing call..."):
                                 try:
-                                    # Upload audio file to Gemini
-                                    audio_file = client.files.upload(
-                                        file=uploaded_audio
+                                    # Prepare audio part with explicit mime type
+                                    import mimetypes
+                                    audio_bytes = uploaded_audio.getvalue()
+                                    mime_type = uploaded_audio.type or mimetypes.guess_type(uploaded_audio.name)[0] or "audio/mpeg"
+                                    audio_part = types.Part.from_bytes(
+                                        data=audio_bytes,
+                                        mime_type=mime_type
                                     )
                                     
                                     role_info = STAFF_ROLES.get(call_role, {})
@@ -1250,7 +1254,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     if st.session_state.api_configured:
                                         analysis_response = client.models.generate_content(
                                             model=st.session_state.selected_model,
-                                            contents=[audio_file, analysis_prompt],
+                                            contents=[audio_part, analysis_prompt],
                                             config=types.GenerateContentConfig(
                                                 temperature=0.7,
                                                 max_output_tokens=15000
