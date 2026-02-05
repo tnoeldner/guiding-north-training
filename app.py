@@ -1439,7 +1439,7 @@ SCENARIO TITLE: [Realistic, specific title]
 SITUATION: [Detailed scenario with all relevant context included - mention specific building, time, fees, policies, student names if applicable]
 YOUR TASK: [What the {selected_role} should do to handle this situation]
 
-Do NOT include any explanation about why this scenario is difficult or what makes it a {difficulty} scenario. Simply present the scenario naturally."""
+CRITICAL: Do NOT end the scenario with any sentence explaining why it is difficult, complex, or what makes it a {difficulty} scenario. Do not include sentences like "This scenario is harder than average because..." or "This scenario tests..." or "This scenario requires...". Present ONLY the scenario and task - nothing more."""
 
                                 # Call Gemini API (use configured client)
                                 client = st.session_state.get('genai_client')
