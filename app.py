@@ -2193,6 +2193,27 @@ Be constructive and supportive in your evaluation."""
         
         # Filter to show only completed results (hide pending reviews)
         completed_results = [r for r in results_data if r.get('status') != 'pending']
+        
+        # Also include completed assigned scenarios
+        assignments_data = load_assignments()
+        for assignment in assignments_data.get("assignments", []):
+            if assignment.get("completed") and assignment.get("reviewed"):
+                # Convert assigned scenario to results format for display
+                converted = {
+                    "first_name": assignment.get("staff_name", "").split()[0] if assignment.get("staff_name") else "Unknown",
+                    "last_name": assignment.get("staff_name", "").split()[1] if assignment.get("staff_name") and len(assignment.get("staff_name", "").split()) > 1 else "",
+                    "email": assignment.get("staff_email", ""),
+                    "role": assignment.get("assigned_role", "Unknown"),
+                    "difficulty": "Assigned Scenario",
+                    "timestamp": assignment.get("response_date", assignment.get("assigned_date", "")),
+                    "scenario": assignment.get("scenario", "N/A"),
+                    "user_response": assignment.get("response", "N/A"),
+                    "evaluation": assignment.get("ai_analysis", "N/A"),
+                    "overall_score": "N/A",
+                    "status": "completed",
+                    "is_assigned": True
+                }
+                completed_results.append(converted)
 
         if not completed_results:
             st.info("No completed results yet.")
