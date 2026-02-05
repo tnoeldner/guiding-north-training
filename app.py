@@ -2396,11 +2396,11 @@ Be constructive and supportive in your evaluation."""
                                 # Show comparison to role group (individual avg - group avg)
                                 user_avg = sum(scores) / len(scores) if scores else 0
                                 comparison = user_avg - role_group_avg
-                                st.metric(label="vs Role Group Average", value=f"{role_group_avg:.2f} / 5",
+                                st.metric(label="vs Role Group Average", value=f"{role_group_avg:.2f} / 4",
                                         delta=f"{comparison:+.2f}" if comparison != 0 else "Same",
                                         delta_color="normal")
                             else:
-                                st.metric(label=f"{role_name} Group Average", value=f"{role_group_avg:.2f} / 5")
+                                st.metric(label=f"{role_name} Group Average", value=f"{role_group_avg:.2f} / 4")
                         
                         with col3:
                             st.metric(label="Total Scenarios Completed", value=len(filtered_role_results))
@@ -2512,7 +2512,7 @@ Be constructive and supportive in your evaluation."""
                                     avg = sum(scores_by_diff) / len(scores_by_diff)
                                     st.metric(
                                         label=f"{difficulty}",
-                                        value=f"{avg:.2f} / 5",
+                                        value=f"{avg:.2f} / 4",
                                         delta=f"({len(scores_by_diff)} attempts)"
                                     )
                         
