@@ -743,6 +743,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                    - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
                    - Mental health concerns and wellness referrals
                    - Emergency/safety situations
+                   - Key and electronic door access issues (lockouts, card access failures, lost keys)
                    - Community development and RA team issues
                    - Academic or financial concerns affecting housing
                    - Bias incidents or community safety concerns
@@ -1370,6 +1371,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         "Noise Complaint",
                         "Housing Policy Question",
                         "Maintenance Request",
+                        "Key & Electronic Access Issue",
                         "Room Change Request",
                         "Lease Violation",
                         "Guest Policy Issue",
