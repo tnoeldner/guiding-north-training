@@ -530,6 +530,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         tab_names = [
             "Scenario Simulator",
             "Tone Polisher",
+            "Assign Scenarios",
             "Call Analysis",
             "Pending Review",
             "Guiding NORTH Framework",
@@ -537,12 +538,13 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             "Configuration",
             "Results & Progress"
         ]
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(tab_names)
-        pending_review_tab = tab4
-        framework_tab = tab5
-        org_chart_tab = tab6
-        config_tab = tab7
-        results_tab = tab8
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(tab_names)
+        assign_scenarios_tab = tab3
+        pending_review_tab = tab5
+        framework_tab = tab6
+        org_chart_tab = tab7
+        config_tab = tab8
+        results_tab = tab9
     else:
         # Check if user is a supervisor
         is_supervisor = len(st.session_state.get('direct_reports', [])) > 0
@@ -876,7 +878,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
     # Call Analysis Tab - Admin Only
     if st.session_state.get("is_admin"):
-        with tab3:
+        with tab4:
             st.header("Call Analysis")
             st.write("Analyze customer phone call transcripts based on the Guiding North Framework.")
             
