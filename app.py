@@ -1214,7 +1214,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             st.header("📤 Assign Scenarios to Staff")
             st.write("Create and assign targeted training scenarios to your team members based on specific topics.")
             
-            # Get supervisor's direct reports
+            # Get supervisor's direct reports (roles)
             direct_reports = st.session_state.get('direct_reports', [])
             if not direct_reports:
                 st.warning("You don't have any direct reports to assign scenarios to.")
@@ -1224,15 +1224,44 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 
                 with col1:
                     st.subheader("Select Recipients")
-                    selected_staff = st.multiselect(
-                        "Choose staff members to receive the scenario:",
+                    selected_role = st.selectbox(
+                        "Select a role:",
                         options=direct_reports,
-                        key="assign_scenario_staff"
+                        key="assign_scenario_role"
                     )
+
+                    users_db_for_assign = load_users()
+                    staff_in_role = {
+                        email: f"{user.get('first_name', '').strip()} {user.get('last_name', '').strip()}".strip()
+                        for email, user in users_db_for_assign.items()
+                        if user.get('position') == selected_role
+                    }
+                    staff_options = [
+                        f"{name} ({email})" if name else email
+                        for email, name in staff_in_role.items()
+                    ]
+                    staff_options.sort()
+
+                    if not staff_options:
+                        st.info("No staff accounts found for this role.")
+                        selected_staff = []
+                    else:
+                        selected_staff_labels = st.multiselect(
+                            "Choose staff members to receive the scenario:",
+                            options=staff_options,
+                            key="assign_scenario_staff"
+                        )
+                        selected_staff = [
+                            label.split("(")[-1].rstrip(")")
+                            for label in selected_staff_labels
+                        ]
                     
                 with col2:
                     st.subheader("Scenario Topic")
                     scenario_topics = [
+                        "Housing Application",
+                        "Room Assignment",
+                        "Roommate Matching",
                         "Roommate Conflict",
                         "Noise Complaint",
                         "Housing Policy Question",
