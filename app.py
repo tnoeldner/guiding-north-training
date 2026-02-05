@@ -1150,8 +1150,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                 try:
                                     # Upload audio file to Gemini
                                     audio_file = client.files.upload(
-                                        file=uploaded_audio,
-                                        mime_type=uploaded_audio.type
+                                        file=uploaded_audio
                                     )
                                     
                                     role_info = STAFF_ROLES[call_role]
