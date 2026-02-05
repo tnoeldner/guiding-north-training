@@ -2200,9 +2200,87 @@ Be constructive and supportive in your evaluation."""
         st.write("Review past performance and track development.")
 
         results_data = load_results()
-        
+
+        def is_valid_score(value):
+            score_str = str(value).strip()
+            return score_str.isdigit() and 1 <= int(score_str) <= 4
+
+        def parse_overall_score(text):
+            if not text:
+                return None
+
+            import re
+            rating_map = {
+                "needs development": "1",
+                "proficient": "3",
+                "exemplary": "4"
+            }
+
+            explicit_match = re.search(r"^OVERALL_SCORE\s*:\s*([1-4])\b", text, flags=re.MULTILINE)
+            if explicit_match:
+                return explicit_match.group(1)
+
+            for line in text.splitlines():
+                cleaned = line.replace("**", "").strip()
+                lower_line = cleaned.lower()
+
+                if "overall" not in lower_line:
+                    continue
+                if "using the rubric" in lower_line or "provide" in lower_line:
+                    continue
+
+                if any(token in lower_line for token in ["overall score", "overall assessment", "overall rating"]):
+                    match = re.search(r"\b([1-4])\b", cleaned)
+                    if match:
+                        return match.group(1)
+
+                    for key, value in rating_map.items():
+                        if key in lower_line:
+                            return value
+
+            overall_match = re.search(r"overall[^\n]{0,60}\b([1-4])\b", text, flags=re.IGNORECASE)
+            if overall_match:
+                return overall_match.group(1)
+
+            lower_text = text.lower()
+            for key, value in rating_map.items():
+                if key in lower_text:
+                    return value
+
+            return None
+
         # Filter to show only completed results (hide pending reviews)
-        completed_results = [r for r in results_data if r.get('status') != 'pending']
+        completed_results = []
+        for idx, res in enumerate(results_data):
+            if res.get('status') != 'pending':
+                res_with_index = dict(res)
+                res_with_index["_result_index"] = idx
+                completed_results.append(res_with_index)
+
+        if st.session_state.get('is_admin'):
+            with st.expander("Admin Tools"):
+                if st.button("Retro-fix stored analysis scores", key="retro_fix_scores"):
+                    updated_results = 0
+                    for res in results_data:
+                        evaluation_text = res.get("evaluation", "")
+                        parsed_score = parse_overall_score(evaluation_text)
+                        if parsed_score and (not is_valid_score(res.get("overall_score")) or res.get("overall_score") != parsed_score):
+                            res["overall_score"] = parsed_score
+                            updated_results += 1
+
+                    assignments_data = load_assignments()
+                    updated_assignments = 0
+                    for assignment in assignments_data.get("assignments", []):
+                        analysis_text = assignment.get("ai_analysis", "")
+                        parsed_score = parse_overall_score(analysis_text)
+                        if parsed_score and (not is_valid_score(assignment.get("overall_score")) or assignment.get("overall_score") != parsed_score):
+                            assignment["overall_score"] = parsed_score
+                            updated_assignments += 1
+
+                    save_results(results_data)
+                    save_assignments(assignments_data)
+                    st.success(f"Updated scores in results: {updated_results}, assignments: {updated_assignments}.")
+                    st.rerun()
         
         # Also include completed assigned scenarios
         assignments_data = load_assignments()
@@ -2247,62 +2325,10 @@ Be constructive and supportive in your evaluation."""
                 # Extract overall score from ai_analysis if available
                 overall_score = assignment.get("overall_score", "N/A")
                 ai_analysis = assignment.get("ai_analysis", "")
-                if (not overall_score or str(overall_score).strip() in ["N/A", "Not Found", "Parse Error"]) and ai_analysis:
-                    import re
-
-                    rating_map = {
-                        "needs development": "1",
-                        "proficient": "3",
-                        "exemplary": "4"
-                    }
-
-                    # First, look for explicit OVERALL_SCORE line
-                    explicit_match = re.search(r"^OVERALL_SCORE\s*:\s*([1-4])\b", ai_analysis, flags=re.MULTILINE)
-                    if explicit_match:
-                        overall_score = explicit_match.group(1)
-
-                    lines = ai_analysis.splitlines()
-                    if not str(overall_score).isdigit():
-                        for line in lines:
-                            cleaned = line.replace("**", "").strip()
-                            lower_line = cleaned.lower()
-
-                            if "overall" not in lower_line:
-                                continue
-
-                            if "using the rubric" in lower_line or "provide" in lower_line:
-                                continue
-
-                            if any(token in lower_line for token in ["overall score", "overall assessment", "overall rating"]):
-                                match = re.search(r"\b([1-4])\b", cleaned)
-                                if match:
-                                    overall_score = match.group(1)
-                                    break
-
-                                for key, value in rating_map.items():
-                                    if key in lower_line:
-                                        overall_score = value
-                                        break
-                                if str(overall_score).isdigit():
-                                    break
-
-                    # Fallback: search the full analysis for an overall line with a score
-                    if not str(overall_score).isdigit():
-                        overall_match = re.search(
-                            r"overall[^\n]{0,60}\b([1-4])\b",
-                            ai_analysis,
-                            flags=re.IGNORECASE
-                        )
-                        if overall_match:
-                            overall_score = overall_match.group(1)
-
-                    # Fallback: map rating words if present anywhere
-                    if not str(overall_score).isdigit():
-                        analysis_lower = ai_analysis.lower()
-                        for key, value in rating_map.items():
-                            if key in analysis_lower:
-                                overall_score = value
-                                break
+                if not is_valid_score(overall_score) and ai_analysis:
+                    parsed_score = parse_overall_score(ai_analysis)
+                    if parsed_score:
+                        overall_score = parsed_score
                 
                 converted = {
                     "first_name": first_name,
@@ -2317,6 +2343,7 @@ Be constructive and supportive in your evaluation."""
                     "overall_score": overall_score,
                     "status": "completed",
                     "is_assigned": True,
+                    "assignment_id": assignment.get("id"),
                     "supervisor_notes": assignment.get("supervisor_feedback", ""),
                     "supervisor_feedback": assignment.get("supervisor_feedback", ""),
                     "reviewed_by": assignment.get("reviewed_by", ""),
@@ -2509,7 +2536,7 @@ Be constructive and supportive in your evaluation."""
                                 yaxis_title="Score (out of 4)",
                                 hovermode='x unified',
                                 height=400,
-                                yaxis=dict(range=[0, 5])
+                                yaxis=dict(range=[0, 4])
                             )
                             
                             st.plotly_chart(fig, use_container_width=True, key=f"score_progression_{role_name}")
@@ -2570,7 +2597,7 @@ Be constructive and supportive in your evaluation."""
                                 xaxis_title="Difficulty",
                                 yaxis_title="Average Score",
                                 height=400,
-                                yaxis=dict(range=[0, 5])
+                                yaxis=dict(range=[0, 4])
                             )
                             
                             st.plotly_chart(fig_bar, use_container_width=True, key=f"difficulty_bar_{role_name}")
@@ -2598,6 +2625,35 @@ Be constructive and supportive in your evaluation."""
                                 st.markdown(f"**Email:** {result.get('email', 'N/A')}")
                                 st.markdown(f"**Difficulty:** {difficulty_display}")
                                 st.markdown(f"**Submitted:** {result.get('timestamp', 'N/A')}")
+
+                                if st.session_state.get('is_admin'):
+                                    st.markdown("---")
+                                    if st.button("Delete Result", key=f"delete_result_{result.get('email', 'NA')}_{i}"):
+                                        if result.get("is_assigned") and result.get("assignment_id"):
+                                            assignments_data_updated = load_assignments()
+                                            assignments_data_updated["assignments"] = [
+                                                a for a in assignments_data_updated.get("assignments", [])
+                                                if a.get("id") != result.get("assignment_id")
+                                            ]
+                                            save_assignments(assignments_data_updated)
+                                        else:
+                                            results_data_updated = load_results()
+                                            result_index = result.get("_result_index")
+                                            if isinstance(result_index, int) and 0 <= result_index < len(results_data_updated):
+                                                results_data_updated.pop(result_index)
+                                            else:
+                                                results_data_updated = [
+                                                    r for r in results_data_updated
+                                                    if not (
+                                                        r.get("email") == result.get("email") and
+                                                        r.get("timestamp") == result.get("timestamp") and
+                                                        r.get("scenario") == result.get("scenario")
+                                                    )
+                                                ]
+                                            save_results(results_data_updated)
+
+                                        st.success("Result deleted.")
+                                        st.rerun()
                                 
                                 # Display supervisor review information if available
                                 if result.get('reviewed_by'):
