@@ -1145,7 +1145,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                     st.audio(uploaded_audio, format=uploaded_audio.type)
                     
                     if st.button("🎤 Transcribe & Analyze Call", key="transcribe_analyze_button"):
-                        if call_first_name and call_last_name:
+                        call_first_name_clean = (call_first_name or "").strip()
+                        call_last_name_clean = (call_last_name or "").strip()
+                        if call_first_name_clean and call_last_name_clean:
                             with st.spinner("Processing audio and analyzing call..."):
                                 try:
                                     # Upload audio file to Gemini
@@ -1153,7 +1155,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                         file=uploaded_audio
                                     )
                                     
-                                    role_info = STAFF_ROLES[call_role]
+                                    role_info = STAFF_ROLES.get(call_role, {})
                                     analysis_prompt = f"""
                                     **System Grounding:** You are an expert training assistant for the University of North Dakota Housing & Residence Life, specializing in the Guiding NORTH Framework. Your analysis MUST be based *strictly* on the following framework document:
 
@@ -1293,7 +1295,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                 except Exception as e:
                                     st.error(f"Error during audio analysis: {e}")
                         else:
-                            st.warning("Please provide your name before analyzing the call.")
+                            st.warning("Please provide your first and last name before analyzing the call.")
 
     # Assign Scenarios Tab - For Supervisors Only
     if 'assign_scenarios_tab' in locals() and assign_scenarios_tab is not None:
