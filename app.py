@@ -1490,6 +1490,10 @@ Keep the scenario concise but realistic."""
                             st.subheader("✍️ Staff Response")
                             st.warning(assignment.get("response", "N/A"))
 
+                            if assignment.get("ai_analysis"):
+                                st.subheader("🔍 AI Analysis")
+                                st.markdown(assignment.get("ai_analysis", "N/A"))
+
                             st.subheader("Supervisor Review")
                             supervisor_feedback = st.text_area(
                                 "Add supervisor feedback (optional):",
@@ -1559,20 +1563,60 @@ Keep the scenario concise but realistic."""
                                 with col1:
                                     if st.button("Submit Response", key=f"submit_assignment_{assignment.get('id')}"):
                                         if response_text.strip():
-                                            # Update assignment with response
-                                            assignments_data_updated = load_assignments()
-                                            for idx, a in enumerate(assignments_data_updated.get("assignments", [])):
-                                                if a.get("id") == assignment.get("id"):
-                                                    assignments_data_updated["assignments"][idx]["response"] = response_text
-                                                    assignments_data_updated["assignments"][idx]["response_date"] = datetime.now().isoformat()
-                                                    assignments_data_updated["assignments"][idx]["completed"] = True
-                                                    break
-                                            
-                                            if save_assignments(assignments_data_updated):
-                                                st.success("✅ Response submitted! Your supervisor will review it soon.")
-                                                st.rerun()
-                                            else:
-                                                st.error("Failed to save response.")
+                                            with st.spinner("Analyzing your response..."):
+                                                try:
+                                                    # Generate AI analysis
+                                                    client = st.session_state.get('genai_client')
+                                                    if not client:
+                                                        st.error("AI analysis not available. Response saved but not analyzed.")
+                                                        analysis = "Analysis not available"
+                                                    else:
+                                                        analysis_prompt = f"""Evaluate this response to a housing and residence life training scenario using the Guiding North Framework pillars:
+
+**Scenario:**
+{assignment.get('scenario', 'N/A')}
+
+**Staff Response:**
+{response_text}
+
+**Framework Pillars:**
+- N (Navigate): Understand needs and root causes
+- O (Own): Take responsibility for resolution
+- R (Respond): Communicate professionally and respectfully
+- T (Timely): Act within appropriate timeframes
+- H (Help): Provide comprehensive support
+
+Please provide:
+1. Strengths of the response
+2. Areas for improvement
+3. Overall assessment using the rubric: Needs Development (1) | Proficient (3) | Exemplary (4)
+4. Specific recommendations for growth
+
+Be constructive and supportive in your evaluation."""
+
+                                                        response = client.models.generate_content(
+                                                            model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
+                                                            contents=analysis_prompt
+                                                        )
+                                                        analysis = response.text if response.text else "Unable to analyze response"
+
+                                                    # Update assignment with response and analysis
+                                                    assignments_data_updated = load_assignments()
+                                                    for idx, a in enumerate(assignments_data_updated.get("assignments", [])):
+                                                        if a.get("id") == assignment.get("id"):
+                                                            assignments_data_updated["assignments"][idx]["response"] = response_text
+                                                            assignments_data_updated["assignments"][idx]["response_date"] = datetime.now().isoformat()
+                                                            assignments_data_updated["assignments"][idx]["completed"] = True
+                                                            assignments_data_updated["assignments"][idx]["ai_analysis"] = analysis
+                                                            break
+
+                                                    if save_assignments(assignments_data_updated):
+                                                        st.success("✅ Response submitted and analyzed! Your supervisor will review it soon.")
+                                                        st.rerun()
+                                                    else:
+                                                        st.error("Failed to save response.")
+                                                except Exception as e:
+                                                    st.error(f"Error analyzing response: {e}")
                                         else:
                                             st.warning("Please enter your response.")
                                 
@@ -1601,6 +1645,11 @@ Keep the scenario concise but realistic."""
                                 st.markdown("---")
                                 st.markdown("### Your Response:")
                                 st.markdown(assignment.get("response", "No response"))
+
+                                if assignment.get("ai_analysis"):
+                                    st.markdown("---")
+                                    st.markdown("### AI Analysis:")
+                                    st.markdown(assignment.get("ai_analysis", "No analysis"))
                                 
                                 if assignment.get("supervisor_feedback"):
                                     st.markdown("---")
