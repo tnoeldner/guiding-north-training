@@ -2280,6 +2280,152 @@ Be constructive and supportive in your evaluation."""
                     save_assignments(assignments_data)
                     st.success(f"Updated scores in results: {updated_results}, assignments: {updated_assignments}.")
                     st.rerun()
+
+                # Rerun selected analyses via AI
+                def build_evaluation_prompt(role, scenario, response):
+                    return f"""
+You are evaluating a staff response using the Guiding NORTH rubric.
+
+Role: {role}
+Scenario: {scenario}
+User Response: {response}
+
+Provide the evaluation using the strict format below.
+
+### Guiding NORTH Evaluation:
+
+OVERALL_SCORE: [Your 1-4 Rating]
+
+**Overall Score:** [Your 1-4 Rating]
+
+---
+
+**N - Navigate Needs:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [Your Justification]
+
+**O - Own the Outcome:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [Your Justification]
+
+**R - Respond Respectfully:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [Your Justification]
+
+**T - Timely & Truthful:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [Your Justification]
+
+**H - Help Proactively:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [Your Justification]
+"""
+
+                rerun_options = []
+                rerun_labels = {}
+                for res in completed_results:
+                    if res.get("is_assigned") and res.get("assignment_id"):
+                        option_id = f"assignment:{res.get('assignment_id')}"
+                    else:
+                        option_id = f"result:{res.get('_result_index', 'na')}"
+
+                    name = f"{res.get('first_name', '')} {res.get('last_name', '')}".strip() or res.get("user_name", "Unknown")
+                    label = f"{option_id} | {res.get('timestamp', 'N/A')[:16]} | {name} | {res.get('role', 'N/A')}"
+                    rerun_options.append(option_id)
+                    rerun_labels[option_id] = label
+
+                selected_to_rerun = st.multiselect(
+                    "Select analyses to rerun",
+                    options=rerun_options,
+                    format_func=lambda x: rerun_labels.get(x, x),
+                    key="rerun_analysis_select"
+                )
+
+                if st.button("Rerun Selected Analyses", key="rerun_selected_analyses"):
+                    client = st.session_state.get('genai_client')
+                    if not client:
+                        st.error("No API client available. Please enter an API key and login.")
+                    elif not selected_to_rerun:
+                        st.warning("Select at least one analysis to rerun.")
+                    else:
+                        updated_results = 0
+                        updated_assignments = 0
+                        skipped = 0
+                        errors = 0
+
+                        assignments_data_updated = load_assignments()
+                        for option_id in selected_to_rerun:
+                            if option_id.startswith("assignment:"):
+                                assignment_id = option_id.split(":", 1)[1]
+                                assignment = next(
+                                    (a for a in assignments_data_updated.get("assignments", []) if str(a.get("id")) == assignment_id),
+                                    None
+                                )
+                                if not assignment:
+                                    skipped += 1
+                                    continue
+
+                                role = assignment.get("assigned_role") or assignment.get("staff_position") or "Unknown Role"
+                                scenario = assignment.get("scenario", "")
+                                response = assignment.get("response", "")
+                                if not scenario or not response:
+                                    skipped += 1
+                                    continue
+
+                                try:
+                                    prompt = build_evaluation_prompt(role, scenario, response)
+                                    ai_response = client.models.generate_content(
+                                        model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
+                                        contents=prompt
+                                    )
+                                    analysis_text = ai_response.text if ai_response.text else "Unable to analyze response"
+                                    assignment["ai_analysis"] = analysis_text
+                                    parsed_score = parse_overall_score(analysis_text)
+                                    if parsed_score:
+                                        assignment["overall_score"] = parsed_score
+                                    updated_assignments += 1
+                                except Exception:
+                                    errors += 1
+                            else:
+                                result_index = option_id.split(":", 1)[1]
+                                if not result_index.isdigit():
+                                    skipped += 1
+                                    continue
+
+                                result_index = int(result_index)
+                                if result_index < 0 or result_index >= len(results_data):
+                                    skipped += 1
+                                    continue
+
+                                res = results_data[result_index]
+                                scenario = res.get("scenario", "")
+                                response = res.get("user_response", "")
+                                role = res.get("role", "Unknown Role")
+                                if not scenario or not response:
+                                    skipped += 1
+                                    continue
+
+                                try:
+                                    prompt = build_evaluation_prompt(role, scenario, response)
+                                    ai_response = client.models.generate_content(
+                                        model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
+                                        contents=prompt
+                                    )
+                                    analysis_text = ai_response.text if ai_response.text else "Unable to analyze response"
+                                    res["evaluation"] = analysis_text
+                                    parsed_score = parse_overall_score(analysis_text)
+                                    if parsed_score:
+                                        res["overall_score"] = parsed_score
+                                    updated_results += 1
+                                except Exception:
+                                    errors += 1
+
+                        save_results(results_data)
+                        save_assignments(assignments_data_updated)
+                        st.success(
+                            f"Rerun complete. Updated results: {updated_results}, assignments: {updated_assignments}, skipped: {skipped}, errors: {errors}."
+                        )
+                        st.rerun()
         
         # Also include completed assigned scenarios
         assignments_data = load_assignments()
