@@ -1454,6 +1454,23 @@ CRITICAL: Do NOT end the scenario with any sentence explaining why it is difficu
                                 
                                 generated_scenario = response.text if response.text else "Unable to generate scenario"
                                 
+                                # Remove any meta-commentary about difficulty if it still appears
+                                # Look for sentences starting with "This scenario is" that explain difficulty
+                                import re
+                                generated_scenario = re.sub(
+                                    r'\n*This scenario is (?:harder|easier|more|less) than average because.*?(?=\n|$)',
+                                    '',
+                                    generated_scenario,
+                                    flags=re.IGNORECASE | re.DOTALL
+                                )
+                                # Also remove any other meta-commentary patterns
+                                generated_scenario = re.sub(
+                                    r'\n*This scenario (?:tests|requires|challenges|involves).*?(?=\n|$)',
+                                    '',
+                                    generated_scenario,
+                                    flags=re.IGNORECASE | re.DOTALL
+                                )
+                                
                                 # Save the assignment
                                 assignments_data = load_assignments()
                                 
