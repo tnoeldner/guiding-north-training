@@ -1694,7 +1694,7 @@ Keep the scenario concise but realistic. Make it feel like an actual situation t
 Please provide:
 1. Strengths of the response
 2. Areas for improvement
-3. Overall assessment using the rubric: Needs Development (1) | Proficient (3) | Exemplary (4)
+3. Overall assessment using the rubric: Needs Development (1) | Proficient (3) | Exemplary (5)
 4. Specific recommendations for growth
 
 Be constructive and supportive in your evaluation."""
@@ -1857,7 +1857,7 @@ Be constructive and supportive in your evaluation."""
                 "Meets 24h deadline; accurate/verified info",
                 "Clarifies next steps; uses guides/FAQs"
             ],
-            "Exemplary (4)": [
+            "Exemplary (5)": [
                 "Anticipates unstated needs; defuses tension",
                 "Proactively resolves future issues",
                 "Exceptional warmth; transforms negatives",
@@ -2246,32 +2246,32 @@ Be constructive and supportive in your evaluation."""
                     rating_map = {
                         "needs development": "1",
                         "proficient": "3",
-                        "exemplary": "4"
+                        "exemplary": "5"
                     }
 
                     lines = ai_analysis.splitlines()
-                    overall_lines = [
-                        line for line in lines
-                        if "overall" in line.lower()
-                        and ("score" in line.lower() or "assessment" in line.lower() or "rating" in line.lower())
-                    ]
-
-                    for line in overall_lines:
-                        # Remove markdown asterisks and search for a score digit
+                    for line in lines:
                         cleaned = line.replace("**", "").strip()
-                        match = re.search(r"([1-5])", cleaned)
-                        if match:
-                            overall_score = match.group(1)
-                            break
-
-                        # Fallback: map rating words to numeric scores
                         lower_line = cleaned.lower()
-                        for key, value in rating_map.items():
-                            if key in lower_line:
-                                overall_score = value
+
+                        if "overall" not in lower_line:
+                            continue
+
+                        if "using the rubric" in lower_line or "provide" in lower_line:
+                            continue
+
+                        if any(token in lower_line for token in ["overall score:", "overall assessment:", "overall rating:"]):
+                            match = re.search(r"\b([1-5])\b", cleaned)
+                            if match:
+                                overall_score = match.group(1)
                                 break
-                        if str(overall_score).isdigit():
-                            break
+
+                            for key, value in rating_map.items():
+                                if key in lower_line:
+                                    overall_score = value
+                                    break
+                            if str(overall_score).isdigit():
+                                break
                 
                 converted = {
                     "first_name": first_name,

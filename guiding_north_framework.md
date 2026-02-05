@@ -42,7 +42,7 @@ Pillar
 
 (3) Proficient (Target)
 
-(4) Exemplary
+(5) Exemplary
 
 N - Navigate
 
