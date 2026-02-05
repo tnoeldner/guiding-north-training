@@ -1297,6 +1297,12 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         options=scenario_topics,
                         key="assign_scenario_topic"
                     )
+                    
+                    difficulty = st.selectbox(
+                        "Scenario Difficulty:",
+                        ["Easier than average", "Average", "Harder than average"],
+                        key="assign_scenario_difficulty"
+                    )
                 
                 # Generate scenario button
                 if st.button("Generate and Assign Scenario", key="generate_assign_scenario_btn"):
@@ -1306,7 +1312,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         with st.spinner(f"Generating {selected_topic} scenario for {len(selected_staff)} staff member(s)..."):
                             try:
                                 # Generate the scenario
-                                scenario_prompt = f"""Generate a realistic housing and residence life training scenario about: {selected_topic}
+                                scenario_prompt = f"""Generate a realistic housing and residence life training scenario for the role: {selected_role}.
+
+The scenario topic is: {selected_topic}
+Difficulty: {difficulty}
 
 The scenario should:
 - Be specific and include details about a student situation
@@ -1314,12 +1323,13 @@ The scenario should:
 - Require the staff member to apply the Guiding North Framework principles
 - Be appropriate for role-playing or discussion
 - Include relevant context (building, time of day, students involved, etc.)
+- Be tailored to the responsibilities and perspective of a {selected_role}
 
 Format:
 SCENARIO TITLE: [Title]
 SITUATION: [Detailed scenario description]
 CONTEXT: [Relevant background information]
-YOUR TASK: [What the staff member should do]
+YOUR TASK: [What the {selected_role} should do]
 
 Keep the scenario concise but realistic."""
 
