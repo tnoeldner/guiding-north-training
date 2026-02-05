@@ -2201,14 +2201,25 @@ Be constructive and supportive in your evaluation."""
         assignments_data = load_assignments()
         for assignment in assignments_data.get("assignments", []):
             if assignment.get("completed") and assignment.get("reviewed"):
-                # Convert assigned scenario to results format for display
-                # Use assigned_role if available, otherwise fall back to staff_position, otherwise selected_role for role display
-                display_role = assignment.get("assigned_role") or assignment.get("staff_position") or "Unknown Role"
+                # Determine the role to display
+                # Priority: assigned_role > staff_position > "Unknown Role"
+                display_role = (
+                    assignment.get("assigned_role") or 
+                    assignment.get("staff_position") or 
+                    assignment.get("role") or
+                    "Unknown Role"
+                )
                 
+                # Get the staff name - handle both old and new format
                 staff_name = assignment.get("staff_name", "Unknown Staff")
+                if not staff_name or staff_name == "Staff Member":
+                    # Fallback: try to get from email if name is missing
+                    staff_email = assignment.get("staff_email", "Unknown")
+                    staff_name = staff_email.split("@")[0].replace(".", " ").title() if "@" in staff_email else staff_email
+                
                 name_parts = staff_name.split()
                 first_name = name_parts[0] if len(name_parts) > 0 else "Unknown"
-                last_name = name_parts[1] if len(name_parts) > 1 else ""
+                last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
                 
                 converted = {
                     "first_name": first_name,
