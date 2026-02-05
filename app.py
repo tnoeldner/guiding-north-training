@@ -1398,10 +1398,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         key="assign_scenario_topic"
                     )
                     
-                    difficulty = st.selectbox(
-                        "Scenario Difficulty:",
-                        ["Easier than average", "Average", "Harder than average"],
-                        key="assign_scenario_difficulty"
+                    contact_type = st.selectbox(
+                        "Type of Customer Contact:",
+                        ["Email", "In Person Question", "Phone Call", "On-Call Situation"],
+                        key="assign_scenario_contact_type"
                     )
                 
                 # Generate scenario button
@@ -1416,12 +1416,13 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
 SCENARIO REQUIREMENTS:
 Topic: {selected_topic}
-Difficulty: {difficulty}
+Contact Type: {contact_type}
 
 USE THIS AUTHENTIC UND HOUSING INFORMATION:
 {UND_HOUSING_CONTEXT}
 
 The scenario should:
+- Be presented as a {contact_type} (format the scenario appropriately for this contact method)
 - Reference real UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
 - Include authentic UND policies on quiet hours, guest limits, alcohol, lockouts, room changes, maintenance procedures
 - Use realistic fee amounts ($10/$25 lockout fees, $75 key recore, $100+ unauthorized move fine, $165 modem removal fine)
@@ -1439,7 +1440,7 @@ SCENARIO TITLE: [Realistic, specific title]
 SITUATION: [Detailed scenario with all relevant context included - mention specific building, time, fees, policies, student names if applicable]
 YOUR TASK: [What the {selected_role} should do to handle this situation]
 
-CRITICAL: Do NOT end the scenario with any sentence explaining why it is difficult, complex, or what makes it a {difficulty} scenario. Do not include sentences like "This scenario is harder than average because..." or "This scenario tests..." or "This scenario requires...". Present ONLY the scenario and task - nothing more."""
+CRITICAL: Do NOT end the scenario with any sentence explaining why it is difficult, complex, or what makes it a {contact_type} scenario. Do not include sentences like "This scenario is harder than average because..." or "This scenario tests..." or "This scenario requires...". Present ONLY the scenario and task - nothing more."""
 
                                 # Call Gemini API (use configured client)
                                 client = st.session_state.get('genai_client')
