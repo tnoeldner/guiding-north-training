@@ -1,6 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
-from google.generativeai import types
+import google.genai as genai
+from google.genai import types
 import json
 import random
 import io
