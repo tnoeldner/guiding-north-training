@@ -2260,7 +2260,7 @@ Be constructive and supportive in your evaluation."""
                         if "using the rubric" in lower_line or "provide" in lower_line:
                             continue
 
-                        if any(token in lower_line for token in ["overall score:", "overall assessment:", "overall rating:"]):
+                        if any(token in lower_line for token in ["overall score", "overall assessment", "overall rating"]):
                             match = re.search(r"\b([1-4])\b", cleaned)
                             if match:
                                 overall_score = match.group(1)
@@ -2271,6 +2271,24 @@ Be constructive and supportive in your evaluation."""
                                     overall_score = value
                                     break
                             if str(overall_score).isdigit():
+                                break
+
+                    # Fallback: search the full analysis for an overall line with a score
+                    if not str(overall_score).isdigit():
+                        overall_match = re.search(
+                            r"overall[^\n]{0,60}\b([1-4])\b",
+                            ai_analysis,
+                            flags=re.IGNORECASE
+                        )
+                        if overall_match:
+                            overall_score = overall_match.group(1)
+
+                    # Fallback: map rating words if present anywhere
+                    if not str(overall_score).isdigit():
+                        analysis_lower = ai_analysis.lower()
+                        for key, value in rating_map.items():
+                            if key in analysis_lower:
+                                overall_score = value
                                 break
                 
                 converted = {
