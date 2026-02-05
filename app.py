@@ -2199,22 +2199,37 @@ Be constructive and supportive in your evaluation."""
         
         # Also include completed assigned scenarios
         assignments_data = load_assignments()
+        users_db = load_users()
         for assignment in assignments_data.get("assignments", []):
             if assignment.get("completed") and assignment.get("reviewed"):
+                # Get the staff email as unique identifier
+                staff_email = assignment.get("staff_email", "")
+                
                 # Determine the role to display
-                # Priority: assigned_role > staff_position > "Unknown Role"
-                display_role = (
-                    assignment.get("assigned_role") or 
-                    assignment.get("staff_position") or 
-                    assignment.get("role") or
-                    "Unknown Role"
-                )
+                # Priority: Look up by email in users DB > assigned_role > staff_position > "Unknown Role"
+                display_role = "Unknown Role"
+                if staff_email and staff_email in users_db:
+                    display_role = users_db[staff_email].get("position", "Unknown Role")
+                else:
+                    display_role = (
+                        assignment.get("assigned_role") or 
+                        assignment.get("staff_position") or 
+                        "Unknown Role"
+                    )
                 
                 # Get the staff name - handle both old and new format
                 staff_name = assignment.get("staff_name", "Unknown Staff")
+                
+                # Try to get full name from users DB if available
+                if staff_email and staff_email in users_db:
+                    user_data = users_db[staff_email]
+                    first = user_data.get("first_name", "")
+                    last = user_data.get("last_name", "")
+                    if first:
+                        staff_name = f"{first} {last}".strip()
+                
+                # Fallback: try to get from email if name is missing
                 if not staff_name or staff_name == "Staff Member":
-                    # Fallback: try to get from email if name is missing
-                    staff_email = assignment.get("staff_email", "Unknown")
                     staff_name = staff_email.split("@")[0].replace(".", " ").title() if "@" in staff_email else staff_email
                 
                 name_parts = staff_name.split()
@@ -2224,7 +2239,7 @@ Be constructive and supportive in your evaluation."""
                 converted = {
                     "first_name": first_name,
                     "last_name": last_name,
-                    "email": assignment.get("staff_email", ""),
+                    "email": staff_email,
                     "role": display_role,
                     "difficulty": "Assigned Scenario",
                     "timestamp": assignment.get("response_date", assignment.get("assigned_date", "")),
