@@ -2232,6 +2232,11 @@ Be constructive and supportive in your evaluation."""
                 if not staff_name or staff_name == "Staff Member":
                     staff_name = staff_email.split("@")[0].replace(".", " ").title() if "@" in staff_email else staff_email
                 
+                # Parse first and last name
+                name_parts = staff_name.split()
+                first_name = name_parts[0] if len(name_parts) > 0 else "Unknown"
+                last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+                
                 # Extract overall score from ai_analysis if available
                 overall_score = "N/A"
                 ai_analysis = assignment.get("ai_analysis", "")
