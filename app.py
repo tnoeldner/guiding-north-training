@@ -640,11 +640,6 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         if selected_role not in STAFF_ROLES:
             st.warning("Selected role is not configured. Please update roles in the Configuration tab.")
             st.stop()
-        contact_type = st.selectbox(
-            "Type of Customer Contact:",
-            ["Email", "In Person Question", "Phone Call", "On-Call Situation"],
-            key="contact_type_selector"
-        )
 
         if "scenario" not in st.session_state:
             st.session_state.scenario = ""
@@ -725,20 +720,19 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic scenario for a '{selected_role}'.
                 
                 **Critical Requirements:**
-                1. **Contact Type:** {contact_type}
-                2. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
-                3. **UND Housing Realism:** 
+                1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
+                2. **UND Housing Realism:** 
                    - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
                    - Include real UND policies (quiet hours, guest limits, alcohol rules, lockout fees, room change procedures, maintenance protocols)
                    - Use authentic fee amounts ($10/$25 lockout fees, $75 key recore, $100+ unauthorized move fines, $165 modem fine, $5,100-$6,180 annual hall costs, apartment rates)
                    - Reference real resources (Wilkerson Service Center, Housing Self-Service portal, RA on Duty)
                    - Make scenarios feel like actual situations at UND Housing & Residence Life
-                4. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
-                5. **Building/Location Variety:** IMPORTANT - Do NOT repeat the same building as the previous scenario. Vary buildings across all available options:
+                3. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
+                4. **Building/Location Variety:** IMPORTANT - Do NOT repeat the same building as the previous scenario. Vary buildings across all available options:
                    - Residence Halls: McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall, Smith Hall, Johnstone Hall, University Place, Swanson Hall
                    - Apartments: Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, 3904 University Ave
                    - Each scenario should use a DIFFERENT building/location from the previous scenario to ensure comprehensive campus coverage
-                6. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
+                5. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
                    - Roommate mediation and conflict resolution
                    - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
                    - Mental health concerns and wellness referrals
@@ -751,8 +745,6 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                    - Housing reassignment or room change requests
                    - Policy clarification and resident concerns
                    - Staff or student complaints
-                7. **Format:** Present the scenario appropriately for the {contact_type} contact method (e.g., as an email, a phone call transcript, an in-person conversation, or an urgent after-hours situation)
-                8. **No Meta-Commentary:** Do NOT include any sentence explaining why the scenario is difficult or what makes it a {contact_type} scenario. Simply present the scenario naturally.
 
                 **Previous Scenario Details (for diversity checking only):**
                 {last_scenario_text}
@@ -763,7 +755,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 **CRITICAL - Building Selection Instructions:**
                 You MUST select a building/location that has NOT been used in recent scenarios. The scenario MUST mention the specific building name (e.g., "In McVey Hall," "At Berkeley Drive Apartments," etc.). Each new scenario must use a different building to ensure comprehensive coverage of all UND Housing locations.
 
-                The scenario should be a full, detailed paragraph that is realistic and something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework. Include the student's name, specific details, and contextual information to make it engaging and appropriately challenging for the selected difficulty level.
+                The scenario should be a full, detailed paragraph that is realistic and something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework. Include the student's name, specific details, and contextual information to make it engaging and realistic.
+                
+                **IMPORTANT:** Do NOT include any concluding sentence that explains the scenario or explains why it might be challenging. Present only the scenario itself.
                 """
                 try:
                     response = client.models.generate_content(
@@ -1399,12 +1393,6 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         options=scenario_topics,
                         key="assign_scenario_topic"
                     )
-                    
-                    contact_type = st.selectbox(
-                        "Type of Customer Contact:",
-                        ["Email", "In Person Question", "Phone Call", "On-Call Situation"],
-                        key="assign_scenario_contact_type"
-                    )
                 
                 # Generate scenario button
                 if st.button("Generate and Assign Scenario", key="generate_assign_scenario_btn"):
@@ -1418,13 +1406,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
 SCENARIO REQUIREMENTS:
 Topic: {selected_topic}
-Contact Type: {contact_type}
 
 USE THIS AUTHENTIC UND HOUSING INFORMATION:
 {UND_HOUSING_CONTEXT}
 
 The scenario should:
-- Be presented as a {contact_type} (format the scenario appropriately for this contact method)
 - Reference real UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
 - Include authentic UND policies on quiet hours, guest limits, alcohol, lockouts, room changes, maintenance procedures
 - Use realistic fee amounts ($10/$25 lockout fees, $75 key recore, $100+ unauthorized move fine, $165 modem removal fine)
@@ -1442,7 +1428,7 @@ SCENARIO TITLE: [Realistic, specific title]
 SITUATION: [Detailed scenario with all relevant context included - mention specific building, time, fees, policies, student names if applicable]
 YOUR TASK: [What the {selected_role} should do to handle this situation]
 
-CRITICAL: Do NOT end the scenario with any sentence explaining why it is difficult, complex, or what makes it a {contact_type} scenario. Do not include sentences like "This scenario is harder than average because..." or "This scenario tests..." or "This scenario requires...". Present ONLY the scenario and task - nothing more."""
+Keep the scenario concise but realistic. Present only the scenario and task without any concluding commentary."""
 
                                 # Call Gemini API (use configured client)
                                 client = st.session_state.get('genai_client')
