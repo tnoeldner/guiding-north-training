@@ -1452,12 +1452,15 @@ Keep the scenario concise but realistic. Make it feel like an actual situation t
                                 assignments_data = load_assignments()
                                 
                                 for staff_email in selected_staff:
+                                    user_data = load_users().get(staff_email, {})
                                     assignment = {
                                         "id": f"{int(datetime.now().timestamp())}_{staff_email}",
                                         "supervisor_email": st.session_state.get("email"),
                                         "supervisor_name": f"{st.session_state.get('first_name')} {st.session_state.get('last_name')}",
                                         "staff_email": staff_email,
-                                        "staff_name": load_users().get(staff_email, {}).get('first_name', 'Staff Member'),
+                                        "staff_name": f"{user_data.get('first_name', 'Staff')} {user_data.get('last_name', 'Member')}".strip(),
+                                        "assigned_role": selected_role,
+                                        "staff_position": user_data.get('position', selected_role),
                                         "topic": selected_topic,
                                         "scenario": generated_scenario,
                                         "assigned_date": datetime.now().isoformat(),
@@ -2199,11 +2202,19 @@ Be constructive and supportive in your evaluation."""
         for assignment in assignments_data.get("assignments", []):
             if assignment.get("completed") and assignment.get("reviewed"):
                 # Convert assigned scenario to results format for display
+                # Use assigned_role if available, otherwise fall back to staff_position, otherwise selected_role for role display
+                display_role = assignment.get("assigned_role") or assignment.get("staff_position") or "Unknown Role"
+                
+                staff_name = assignment.get("staff_name", "Unknown Staff")
+                name_parts = staff_name.split()
+                first_name = name_parts[0] if len(name_parts) > 0 else "Unknown"
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+                
                 converted = {
-                    "first_name": assignment.get("staff_name", "").split()[0] if assignment.get("staff_name") else "Unknown",
-                    "last_name": assignment.get("staff_name", "").split()[1] if assignment.get("staff_name") and len(assignment.get("staff_name", "").split()) > 1 else "",
+                    "first_name": first_name,
+                    "last_name": last_name,
                     "email": assignment.get("staff_email", ""),
-                    "role": assignment.get("assigned_role", "Unknown"),
+                    "role": display_role,
                     "difficulty": "Assigned Scenario",
                     "timestamp": assignment.get("response_date", assignment.get("assigned_date", "")),
                     "scenario": assignment.get("scenario", "N/A"),
