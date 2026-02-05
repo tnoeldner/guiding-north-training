@@ -637,6 +637,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         available_roles = [st.session_state.position] if st.session_state.position else list(STAFF_ROLES.keys())
         
         selected_role = st.selectbox("Select Your Role:", available_roles, key="role_selector")
+        if selected_role not in STAFF_ROLES:
+            st.warning("Selected role is not configured. Please update roles in the Configuration tab.")
+            st.stop()
         difficulty = st.selectbox(
             "Scenario Difficulty:",
             ["Easier than average", "Average", "Harder than average"],
@@ -655,7 +658,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
         if st.button("🎲 Generate New Scenario", key="generate_scenario_button"):
             with st.spinner("Generating a new scenario..."):
-                role_info = STAFF_ROLES[selected_role]
+                role_info = STAFF_ROLES.get(selected_role, {})
                 last_scenario_text = st.session_state.scenario.strip() if st.session_state.scenario else "None"
                 building_history_text = ", ".join(st.session_state.building_history[-5:]) if st.session_state.building_history else "None"
                 
