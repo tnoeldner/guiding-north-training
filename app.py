@@ -633,8 +633,20 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
              st.warning("No staff roles configured. Please add roles in the Configuration tab.")
              st.stop()
 
-        # Staff can only practice their own role, supervisors can practice any of their direct reports' roles
-        available_roles = [st.session_state.position] if st.session_state.position else list(STAFF_ROLES.keys())
+        # Admin can practice as any role, supervisors can practice as their direct reports
+        if st.session_state.get("is_admin"):
+            available_roles = list(STAFF_ROLES.keys())
+        elif st.session_state.get("user_role") == "supervisor":
+            available_roles = [st.session_state.position] + st.session_state.get('direct_reports', [])
+        else:
+            available_roles = [st.session_state.position]
+        
+        # Ensure the list only contains valid roles from STAFF_ROLES
+        available_roles = [role for role in available_roles if role in STAFF_ROLES]
+
+        if not available_roles:
+            st.warning("No roles available for you to simulate. Please check the configuration.")
+            st.stop()
         
         selected_role = st.selectbox("Select Your Role:", available_roles, key="role_selector")
         if selected_role not in STAFF_ROLES:
