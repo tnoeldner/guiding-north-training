@@ -909,6 +909,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             
                             # Save the result directly to pending review (without showing to staff)
                             results = load_results()
+                            difficulty = "Standard"  # Set a default difficulty
                             new_result = {
                                 "first_name": st.session_state.first_name,
                                 "last_name": st.session_state.last_name,
