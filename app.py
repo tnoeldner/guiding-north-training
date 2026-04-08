@@ -536,8 +536,10 @@ if st.session_state.get("email"):
                     st.info("No users to manage.")
     
     if st.sidebar.button("Logout", key="logout_btn"):
+        # Preserve essential keys across sessions
+        keys_to_preserve = ['api_configured', 'selected_model', 'api_key', 'genai_client', 'models']
         for key in list(st.session_state.keys()):
-            if key not in ['api_configured', 'selected_model', 'api_key']:
+            if key not in keys_to_preserve:
                 del st.session_state[key]
         st.rerun()
 
@@ -1528,7 +1530,7 @@ Keep the scenario concise but realistic. Present only the scenario and task with
             ]
 
             # Load assigned scenarios and filter for pending review
-            assignments_data = load_assignments()
+            assignments_data
             pending_assignments = [
                 (idx, a) for idx, a in enumerate(assignments_data.get("assignments", []))
                 if a.get("completed")
