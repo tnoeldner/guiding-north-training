@@ -651,6 +651,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             st.stop()
         
         selected_role = st.selectbox("Select Your Role:", available_roles, key="role_selector")
+        difficulty = st.selectbox(
+            "Select Scenario Difficulty:",
+            ("Standard", "Challenging", "Complex"),
+            key="difficulty_selector"
+        )
         if selected_role not in STAFF_ROLES:
             st.warning("Selected role is not configured. Please update roles in the Configuration tab.")
             st.stop()
@@ -731,7 +736,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 {UND_HOUSING_CONTEXT}
                 ---
 
-                **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic scenario for a '{selected_role}'.
+                **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic scenario for a '{selected_role}'. The difficulty of this scenario should be '{difficulty}'.
                 
                 **Critical Requirements:**
                 1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
