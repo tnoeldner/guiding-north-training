@@ -1530,7 +1530,7 @@ Keep the scenario concise but realistic. Present only the scenario and task with
             ]
 
             # Load assigned scenarios and filter for pending review
-            assignments_data
+            assignments_data = load_assignments()
             pending_assignments = [
                 (idx, a) for idx, a in enumerate(assignments_data.get("assignments", []))
                 if a.get("completed")
