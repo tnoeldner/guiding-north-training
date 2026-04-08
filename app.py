@@ -812,9 +812,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             
             user_response = st.text_area("Your Response:", height=150, key="response_input")
 
-            if st.button("📤 Submit Response to Supervisor", key="evaluate_response_button"):
+            if st.button("🤖 Evaluate My Response", key="evaluate_response_button"):
                 if user_response:
-                    with st.spinner("Submitting your response for supervisor review..."):
+                    with st.spinner("Evaluating your response..."):
                         role_info = STAFF_ROLES[selected_role]
                         eval_prompt = f"""
                         **System Grounding:** You are an expert training assistant for the University of North Dakota Housing & Residence Life, specializing in the Guiding NORTH Framework. Your analysis MUST be based *strictly* on the following framework document:
@@ -899,51 +899,20 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     max_output_tokens=15000
                                 )
                             )
-                            # Extract the evaluation text (don't show to staff)
-                            evaluation_text = evaluation_response.text
-                            
-                            # Extract overall score from the evaluation text
-                            overall_score = "Not Found"
-                            for line in evaluation_text.splitlines():
-                                if "Overall Score:" in line:
-                                    try:
-                                        overall_score = line.split(":")[1].strip()
-                                    except IndexError:
-                                        overall_score = "Parse Error"
-                                    break
-                            
-                            # Save the result directly to pending review (without showing to staff)
-                            results = load_results()
-                            difficulty = "Standard"  # Set a default difficulty
-                            new_result = {
-                                "first_name": st.session_state.first_name,
-                                "last_name": st.session_state.last_name,
-                                "email": st.session_state.email,
-                                "timestamp": datetime.now().isoformat(),
-                                "role": selected_role,
-                                "difficulty": difficulty,
-                                "scenario": st.session_state.scenario,
-                                "user_response": user_response,
-                                "evaluation": evaluation_text,
-                                "overall_score": overall_score,
-                                "status": "pending",
-                                "reviewed_by": None,
-                                "review_date": None,
-                                "supervisor_notes": ""
-                            }
-                            results.append(new_result)
-                            if save_results(results):
-                                st.success("✅ Response submitted to your supervisor for review!")
-                                st.info("🤝 Your supervisor will review your response and schedule a meeting to discuss the feedback and suggestions.")
-                                st.session_state.scenario = ""
-                                st.session_state.evaluation = ""
-                                st.rerun()
-                            else:
-                                st.error("Failed to submit your response.")
+                            st.session_state.evaluation = evaluation_response.text
                         except Exception as e:
-                            st.error(f"Error submitting response: {e}")
+                            st.error(f"Error evaluating response: {e}")
                 else:
-                    st.warning("Please enter your response before submitting.")
+                    st.warning("Please enter your response before evaluating.")
+
+        if st.session_state.evaluation:
+            st.markdown("---")
+            st.markdown("### 💡 AI Evaluation & Feedback")
+            st.markdown(st.session_state.evaluation)
+            if st.button("Try Another Scenario", key="clear_scenario_btn"):
+                st.session_state.scenario = ""
+                st.session_state.evaluation = ""
+                st.rerun()
 
     with tab2:
         st.header("AI-Powered Tone Polisher")
