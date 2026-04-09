@@ -4,3 +4,7 @@ PyPDF2
 streamlit-agraph
 plotly
 numpy
+psycopg2-binary
+python-dotenv
+toml
+werkzeug

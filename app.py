@@ -4,30 +4,125 @@ from google.genai import types
 import json
 import random
 import io
+import os
+import re
+import secrets
+import hashlib
+import numpy as np
 from PyPDF2 import PdfReader
 from streamlit_agraph import agraph, Node, Edge, Config
 from datetime import datetime
 import plotly.graph_objects as go
-import numpy as np
-import hashlib
-import secrets
+from werkzeug.security import generate_password_hash, check_password_hash
+import psycopg2
+from psycopg2 import pool
 
 # --- App Configuration ---
 st.set_page_config(
-    page_title="Guiding North Training",
+    page_title="Guiding NORTH: HRL Training",
     page_icon="🧭",
     layout="wide",
 )
 
-# --- Configuration Management ---
-CONFIG_FILE = "config.json"
+# --- Database Configuration ---
+@st.cache_resource
+def get_db_pool():
+    """Creates a PostgreSQL connection pool."""
+    try:
+        return psycopg2.pool.SimpleConnectionPool(
+            1, 10, dsn=st.secrets["NEON_DB_CONNECTION_STRING"]
+        )
+    except Exception as e:
+        st.error(f"Error creating database connection pool: {e}")
+        return None
+
+def init_db():
+    """Initialize the database and create tables if they don't exist."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        st.error("Database connection pool is not available.")
+        return
+
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    email VARCHAR(255) PRIMARY KEY,
+                    password_hash VARCHAR(255) NOT NULL,
+                    is_admin BOOLEAN DEFAULT FALSE,
+                    first_name VARCHAR(100),
+                    last_name VARCHAR(100),
+                    position VARCHAR(100),
+                    created_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS results (
+                    id SERIAL PRIMARY KEY,
+                    first_name VARCHAR(100),
+                    last_name VARCHAR(100),
+                    email VARCHAR(255),
+                    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    role VARCHAR(100),
+                    difficulty VARCHAR(50),
+                    scenario TEXT,
+                    user_response TEXT,
+                    evaluation TEXT,
+                    overall_score VARCHAR(50),
+                    status VARCHAR(50) DEFAULT 'pending',
+                    reviewed_by VARCHAR(255),
+                    review_date TIMESTAMP WITH TIME ZONE,
+                    supervisor_notes TEXT
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS scenario_assignments (
+                    id SERIAL PRIMARY KEY,
+                    email VARCHAR(255) NOT NULL,
+                    scenario_name VARCHAR(255) NOT NULL,
+                    status VARCHAR(50) DEFAULT 'assigned',
+                    assigned_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    completed_date TIMESTAMP WITH TIME ZONE
+                );
+            """)
+            # Migrate: add rich columns if they don't exist yet
+            cur.execute("""
+                ALTER TABLE scenario_assignments
+                    ADD COLUMN IF NOT EXISTS supervisor_email VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS supervisor_name VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS staff_name VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS assigned_role VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS scenario_text TEXT,
+                    ADD COLUMN IF NOT EXISTS response TEXT,
+                    ADD COLUMN IF NOT EXISTS response_date TIMESTAMP WITH TIME ZONE,
+                    ADD COLUMN IF NOT EXISTS ai_analysis TEXT,
+                    ADD COLUMN IF NOT EXISTS supervisor_feedback TEXT,
+                    ADD COLUMN IF NOT EXISTS reviewed_date TIMESTAMP WITH TIME ZONE,
+                    ADD COLUMN IF NOT EXISTS difficulty VARCHAR(50);
+            """)
+            cur.execute("""
+                ALTER TABLE results
+                    ADD COLUMN IF NOT EXISTS exemplary_response TEXT,
+                    ADD COLUMN IF NOT EXISTS exemplary_feedback TEXT,
+                    ADD COLUMN IF NOT EXISTS exemplary_refined TEXT;
+            """)
+            conn.commit()
+    except Exception as e:
+        st.error(f"Database initialization failed: {e}")
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+init_db()
+
+# --- File Path Constants ---
 FRAMEWORK_FILE = "guiding_north_framework.md"
 KNOWLEDGE_BASE_FILE = "HRLKnowledgeBase"
 WEBSITE_KB_FILE = "und_housing_website.md"
 BEST_PRACTICES_FILE = "housing_best_practices.md"
-RESULTS_FILE = "results.json"
-USERS_FILE = "users.json"
-ASSIGNMENTS_FILE = "scenario_assignments.json"
+CONFIG_FILE = "config.json"
 
 # --- UND Housing Context for Realistic Scenarios ---
 UND_HOUSING_CONTEXT = """
@@ -94,22 +189,88 @@ def validate_email(email):
     return re.match(pattern, email) is not None
 
 def load_users():
-    """Loads user accounts and passwords from JSON."""
-    try:
-        with open(USERS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    """Loads all users from the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        st.error("Database connection is not available.")
         return {}
-
-def save_users(users_data):
-    """Saves user accounts to JSON."""
+    conn = None
     try:
-        with open(USERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(users_data, f, indent=4)
-        return True
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT email, password_hash, is_admin, first_name, last_name, position FROM users")
+            users = {}
+            for record in cur.fetchall():
+                email, pw_hash, is_admin, first, last, pos = record
+                users[email] = {
+                    "password_hash": pw_hash,
+                    "is_admin": is_admin,
+                    "first_name": first,
+                    "last_name": last,
+                    "position": pos
+                }
+            return users
     except Exception as e:
-        st.error(f"Error saving users: {e}")
+        st.error(f"Error loading users from database: {e}")
+        return {}
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def save_user(email, password, is_admin=False, first_name="", last_name="", position=""):
+    """Saves or updates a single user in the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        st.error("Database connection is not available.")
+        return
+    conn = None
+    password_hash = generate_password_hash(password)
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO users (email, password_hash, is_admin, first_name, last_name, position)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (email) DO UPDATE SET
+                    password_hash = EXCLUDED.password_hash,
+                    is_admin = EXCLUDED.is_admin,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    position = EXCLUDED.position;
+                """,
+                (email, password_hash, is_admin, first_name, last_name, position)
+            )
+            conn.commit()
+    except Exception as e:
+        st.error(f"Error saving user to database: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def delete_user(email):
+    """Deletes a user from the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        st.error("Database connection is not available.")
         return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM users WHERE email = %s", (email,))
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error deleting user from database: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
 
 def load_framework():
     """Loads the Guiding North Framework from the markdown file."""
@@ -147,66 +308,506 @@ def load_best_practices():
         st.error(f"Best practices file not found: {BEST_PRACTICES_FILE}")
         return "Best practices not available."
 
+def extract_exemplary_response(evaluation_text):
+    """Extracts the Exemplary Response / Call Example section from an AI evaluation."""
+    if not evaluation_text:
+        return None
+    import re
+    # Match from the exemplary header to end of string — covers both scenario and call analysis headings
+    patterns = [
+        r"(?:Exemplary Call Example|Exemplary Response Example|Exemplary Response|Exemplary Answer)[:\s*#]*\n(.*)",
+        r"\*\*Exemplary (?:Call Example|Response(?:[^*]*)?)\*\*[:\s]*\n(.*)",
+        r"#{1,4}\s*Exemplary (?:Call Example|Response)[:\s]*\n(.*)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, evaluation_text, re.IGNORECASE | re.DOTALL)
+        if m:
+            return m.group(1).strip()
+    return None
+
 def load_results():
-    """Loads the results from the JSON file."""
-    try:
-        with open(RESULTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    """Loads all results from the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
         return []
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, first_name, last_name, email, timestamp, role, difficulty, scenario, user_response, evaluation, overall_score, status, reviewed_by, review_date, supervisor_notes, exemplary_response, exemplary_feedback, exemplary_refined FROM results ORDER BY timestamp DESC")
+            results = []
+            for record in cur.fetchall():
+                results.append({
+                    "id": record[0],
+                    "first_name": record[1],
+                    "last_name": record[2],
+                    "email": record[3],
+                    "timestamp": record[4].isoformat(),
+                    "role": record[5],
+                    "difficulty": record[6],
+                    "scenario": record[7],
+                    "user_response": record[8],
+                    "evaluation": record[9],
+                    "overall_score": record[10],
+                    "status": record[11],
+                    "reviewed_by": record[12],
+                    "review_date": record[13].isoformat() if record[13] else None,
+                    "supervisor_notes": record[14],
+                    "exemplary_response": record[15],
+                    "exemplary_feedback": record[16],
+                    "exemplary_refined": record[17],
+                })
+            return results
+    except Exception as e:
+        st.error(f"Error loading results from database: {e}")
+        return []
+    finally:
+        if conn:
+            db_pool.putconn(conn)
 
 def save_results(data):
-    """Saves the results to the JSON file."""
-    try:
-        with open(RESULTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
-        return True
-    except Exception as e:
-        st.error(f"Error saving results: {e}")
+    """Saves a single result dict to the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
         return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO results (first_name, last_name, email, timestamp, role, difficulty, scenario, user_response, evaluation, overall_score, exemplary_response)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                (
+                    data.get("first_name"), data.get("last_name"), data.get("email"),
+                    data.get("timestamp"), data.get("role"), data.get("difficulty"),
+                    data.get("scenario"), data.get("user_response"),
+                    data.get("evaluation"), data.get("overall_score"),
+                    data.get("exemplary_response")
+                )
+            )
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error saving result to database: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def update_result(result_id, **fields):
+    """Updates specific fields of an existing result row by id."""
+    db_pool = get_db_pool()
+    if not db_pool or not fields:
+        return False
+    allowed = {"evaluation", "overall_score", "status", "reviewed_by", "review_date", "supervisor_notes",
+               "exemplary_response", "exemplary_feedback", "exemplary_refined"}
+    safe_fields = {k: v for k, v in fields.items() if k in allowed}
+    if not safe_fields:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            # Coerce review_date to a datetime object if it's a string
+            if "review_date" in safe_fields and isinstance(safe_fields["review_date"], str):
+                try:
+                    safe_fields["review_date"] = datetime.fromisoformat(safe_fields["review_date"])
+                except ValueError:
+                    safe_fields["review_date"] = None
+            set_clause = ", ".join(f"{k} = %s" for k in safe_fields)
+            values = list(safe_fields.values()) + [result_id]
+            cur.execute(f"UPDATE results SET {set_clause} WHERE id = %s", values)
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error updating result: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def delete_result(result_id):
+    """Deletes a result row by id."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM results WHERE id = %s", (result_id,))
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error deleting result: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def load_exemplary_examples(limit=5):
+    """Loads supervisor-refined exemplary responses for few-shot prompting."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return []
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT scenario, exemplary_response, exemplary_feedback, exemplary_refined,
+                       reviewed_by, review_date
+                FROM results
+                WHERE exemplary_refined IS NOT NULL AND exemplary_refined != ''
+                ORDER BY review_date DESC NULLS LAST
+                LIMIT %s
+            """, (limit,))
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
+            return [dict(zip(cols, row)) for row in rows]
+    except Exception:
+        return []
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+
+def sync_corrections_to_knowledge_base():
+    """Writes all supervisor-approved exemplary standards into the HRLKnowledgeBase file."""
+    examples = load_exemplary_examples(limit=100)
+    START_MARKER = "===BEGIN_SUPERVISOR_EXEMPLARY_STANDARDS==="
+    END_MARKER = "===END_SUPERVISOR_EXEMPLARY_STANDARDS==="
+    try:
+        with open(KNOWLEDGE_BASE_FILE, 'r', encoding='utf-8', errors='replace') as f:
+            current_content = f.read()
+    except FileNotFoundError:
+        current_content = ""
+    # Strip existing auto-generated section
+    start_idx = current_content.find(START_MARKER)
+    if start_idx != -1:
+        end_idx = current_content.find(END_MARKER)
+        if end_idx != -1:
+            current_content = current_content[:start_idx].rstrip()
+        else:
+            current_content = current_content[:start_idx].rstrip()
+    if not examples:
+        with open(KNOWLEDGE_BASE_FILE, 'w', encoding='utf-8') as f:
+            f.write(current_content)
+        return
+    lines = [
+        "",
+        "",
+        START_MARKER,
+        "## Supervisor-Approved Exemplary Standards",
+        "Source: Auto-generated from supervisor-reviewed training corrections.",
+        "Context: The following standards represent supervisor-approved expectations for exemplary staff performance.",
+        "        The AI must use these as authoritative benchmarks when writing any exemplary response.",
+        ""
+    ]
+    for i, ex in enumerate(examples, 1):
+        review_date = str(ex.get('review_date', ''))[:10]
+        reviewer = ex.get('reviewed_by', 'supervisor')
+        lines.append(f"Standard {i} (reviewed {review_date} by {reviewer}):")
+        if ex.get('scenario'):
+            preview = ex['scenario'][:400] + ("..." if len(ex.get('scenario', '')) > 400 else "")
+            lines.append(f"  Scenario Context: {preview}")
+        if ex.get('exemplary_feedback'):
+            lines.append(f"  Supervisor Corrections Applied: {ex['exemplary_feedback']}")
+        lines.append(f"  Approved Exemplary Response:")
+        lines.append(f"  {ex.get('exemplary_refined', 'N/A')}")
+        lines.append("")
+    lines.append(END_MARKER)
+    new_content = current_content + "\n".join(lines)
+    with open(KNOWLEDGE_BASE_FILE, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+
 
 def load_config():
-    """Loads the configuration from the JSON file."""
+    """Loads the configuration from the database, migrating from config.json on first run."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        st.error("Database connection is not available for loading config.")
+        return {"staff_roles": {}, "org_chart": {'nodes': [], 'edges': []}}
+    conn = None
     try:
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            config_data = json.load(f)
-            # Ensure org_chart key exists
-            if 'org_chart' not in config_data:
-                config_data['org_chart'] = {'nodes': [], 'edges': []}
-            return config_data
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {
-            "staff_roles": {},
-            "org_chart": {'nodes': [], 'edges': []}
-        }
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM app_config WHERE key = 'default_config'")
+            record = cur.fetchone()
+            if record and record[0]:
+                return record[0]
+            else:
+                # No config in DB — attempt to migrate from config.json
+                try:
+                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        config_data = json.load(f)
+                    if 'org_chart' not in config_data:
+                        config_data['org_chart'] = {'nodes': [], 'edges': []}
+                    # Seed the database so future loads come from there
+                    cur.execute(
+                        """
+                        INSERT INTO app_config (key, value)
+                        VALUES ('default_config', %s)
+                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+                        """,
+                        (json.dumps(config_data),)
+                    )
+                    conn.commit()
+                    return config_data
+                except (FileNotFoundError, json.JSONDecodeError):
+                    return {"staff_roles": {}, "org_chart": {'nodes': [], 'edges': []}}
+    except Exception as e:
+        st.error(f"Error loading configuration from database: {e}")
+        return {"staff_roles": {}, "org_chart": {'nodes': [], 'edges': []}}
+    finally:
+        if conn:
+            db_pool.putconn(conn)
 
 def save_config(config_data):
-    """Saves the configuration to config.json."""
+    """Saves the configuration to the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        st.error("Database connection is not available for saving config.")
+        return False
+    conn = None
     try:
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(config_data, f, indent=4)
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            # Use JSONB for the value and an ON CONFLICT clause to handle updates
+            cur.execute(
+                """
+                INSERT INTO app_config (key, value)
+                VALUES ('default_config', %s)
+                ON CONFLICT (key) DO UPDATE SET
+                    value = EXCLUDED.value;
+                """,
+                (json.dumps(config_data),)
+            )
+            conn.commit()
         return True
     except Exception as e:
-        st.error(f"Failed to save configuration: {e}")
+        st.error(f"Failed to save configuration to database: {e}")
+        if conn:
+            conn.rollback()
         return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
 
 def load_assignments():
-    """Loads scenario assignments from the JSON file."""
+    """Loads all scenario assignments from the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return []
+    conn = None
     try:
-        with open(ASSIGNMENTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"assignments": []}
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, email, scenario_name, status, assigned_date, completed_date,
+                       supervisor_email, supervisor_name, staff_name, assigned_role,
+                       scenario_text, response, response_date, ai_analysis,
+                       supervisor_feedback, reviewed_date, difficulty
+                FROM scenario_assignments
+            """)
+            assignments = []
+            for r in cur.fetchall():
+                assignments.append({
+                    "id": r[0],
+                    "email": r[1],
+                    "staff_email": r[1],        # alias for legacy references
+                    "scenario_name": r[2],
+                    "topic": r[2],              # alias for legacy references
+                    "status": r[3],
+                    "assigned_date": r[4].isoformat() if r[4] else None,
+                    "completed_date": r[5].isoformat() if r[5] else None,
+                    "supervisor_email": r[6],
+                    "supervisor_name": r[7],
+                    "staff_name": r[8],
+                    "assigned_role": r[9],
+                    "scenario_text": r[10],
+                    "scenario": r[10],          # alias for legacy references
+                    "response": r[11],
+                    "response_date": r[12].isoformat() if r[12] else None,
+                    "ai_analysis": r[13],
+                    "supervisor_feedback": r[14],
+                    "reviewed_date": r[15].isoformat() if r[15] else None,
+                    "difficulty": r[16],
+                })
+            return assignments
+    except Exception as e:
+        st.error(f"Error loading assignments from database: {e}")
+        return []
+    finally:
+        if conn:
+            db_pool.putconn(conn)
 
-def save_assignments(data):
-    """Saves scenario assignments to the JSON file."""
+def save_assignment(email, scenario_name, supervisor_email=None, supervisor_name=None,
+                    staff_name=None, assigned_role=None, scenario_text=None, difficulty=None):
+    """Saves a new scenario assignment to the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
     try:
-        with open(ASSIGNMENTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO scenario_assignments
+                    (email, scenario_name, supervisor_email, supervisor_name,
+                     staff_name, assigned_role, scenario_text, difficulty)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (email, scenario_name, supervisor_email, supervisor_name,
+                 staff_name, assigned_role, scenario_text, difficulty)
+            )
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error saving assignment to database: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def update_assignment_status(assignment_id, status, supervisor_feedback=None):
+    """Updates the status of a scenario assignment, optionally saving supervisor feedback."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            if supervisor_feedback is not None:
+                reviewed_date = datetime.now() if status == "reviewed" else None
+                cur.execute(
+                    """UPDATE scenario_assignments
+                       SET status = %s, supervisor_feedback = %s, reviewed_date = %s
+                       WHERE id = %s""",
+                    (status, supervisor_feedback, reviewed_date, assignment_id)
+                )
+            else:
+                completed_date = datetime.now() if status == "completed" else None
+                cur.execute(
+                    "UPDATE scenario_assignments SET status = %s, completed_date = %s WHERE id = %s",
+                    (status, completed_date, assignment_id)
+                )
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error updating assignment status: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def save_assignment_response(assignment_id, response, ai_analysis=None):
+    """Saves a staff member's response and AI analysis for an assigned scenario."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE scenario_assignments
+                   SET response = %s, ai_analysis = %s, response_date = %s, status = 'completed'
+                   WHERE id = %s""",
+                (response, ai_analysis, datetime.now(), assignment_id)
+            )
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error saving assignment response: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def delete_assignment(assignment_id):
+    """Deletes a scenario assignment from the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM scenario_assignments WHERE id = %s", (assignment_id,))
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error deleting assignment: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def save_users(users_dict):
+    """Compatibility adapter — upserts all users in the dict to the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            for email, user_data in users_dict.items():
+                cur.execute(
+                    """
+                    INSERT INTO users (email, password_hash, is_admin, first_name, last_name, position)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (email) DO UPDATE SET
+                        password_hash = EXCLUDED.password_hash,
+                        is_admin = EXCLUDED.is_admin,
+                        first_name = EXCLUDED.first_name,
+                        last_name = EXCLUDED.last_name,
+                        position = EXCLUDED.position;
+                    """,
+                    (
+                        email,
+                        user_data.get('password_hash'),
+                        user_data.get('is_admin', False),
+                        user_data.get('first_name', ''),
+                        user_data.get('last_name', ''),
+                        user_data.get('position', '')
+                    )
+                )
+            conn.commit()
         return True
     except Exception as e:
-        st.error(f"Failed to save assignments: {e}")
+        st.error(f"Error saving users: {e}")
+        if conn:
+            conn.rollback()
         return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def save_assignments(assignments_data):
+    """Compatibility stub — assignments are managed individually via DB functions."""
+    # In the DB model, assignments are saved/updated one at a time.
+    # This stub exists for legacy call-sites and returns True to avoid crashes.
+    return True
 
 # Load initial configuration
 config = load_config()
@@ -394,17 +995,16 @@ if not users_db and not st.session_state.email:
             elif len(admin_password) < 6:
                 st.error("Password must be at least 6 characters.")
             else:
-                users_db[admin_email] = {
-                    "password_hash": hash_password(admin_password),
-                    "is_admin": True,
-                    "first_name": "Admin",
-                    "last_name": "Account",
-                    "position": "Administrator",
-                    "created_date": datetime.now().isoformat()
-                }
-                if save_users(users_db):
-                    st.success("✅ Admin account created! You can now log in.")
-                    st.rerun()
+                save_user(
+                    email=admin_email,
+                    password=admin_password,
+                    is_admin=True,
+                    first_name="Admin",
+                    last_name="Account",
+                    position="Administrator"
+                )
+                st.success("✅ Admin account created! You can now log in.")
+                st.rerun()
 
 # Login form
 col1, col2 = st.sidebar.columns([1, 1])
@@ -419,7 +1019,7 @@ if st.sidebar.button("Login", key="login_button"):
         st.sidebar.error("Please enter all required fields.")
     elif email_input not in users_db:
         st.sidebar.error("Email not registered. Contact your administrator.")
-    elif not verify_password(users_db[email_input]["password_hash"], password_input):
+    elif not check_password_hash(users_db[email_input]["password_hash"], password_input):
         st.sidebar.error("Incorrect password.")
     else:
         # Successful login - load user data from database
@@ -461,16 +1061,24 @@ if st.session_state.get("email"):
                 new_pwd_confirm = st.text_input("Confirm New Password:", type="password", key="new_pwd_confirm")
                 
                 if st.button("Update Password", key="update_pwd_btn"):
-                    if not verify_password(users_db[st.session_state.email]["password_hash"], current_pwd):
+                    if not check_password_hash(users_db[st.session_state.email]["password_hash"], current_pwd):
                         st.error("Current password is incorrect.")
                     elif len(new_pwd) < 6:
                         st.error("New password must be at least 6 characters.")
                     elif new_pwd != new_pwd_confirm:
                         st.error("New passwords do not match.")
                     else:
-                        users_db[st.session_state.email]["password_hash"] = hash_password(new_pwd)
-                        if save_users(users_db):
-                            st.success("✅ Password updated successfully!")
+                        # We need to preserve the user's other data
+                        user_data = users_db[st.session_state.email]
+                        save_user(
+                            email=st.session_state.email,
+                            password=new_pwd,
+                            is_admin=user_data.get('is_admin', False),
+                            first_name=user_data.get('first_name', ''),
+                            last_name=user_data.get('last_name', ''),
+                            position=user_data.get('position', '')
+                        )
+                        st.success("✅ Password updated successfully!")
             
             # New User Tab (Admin Only)
             with tab_new_user:
@@ -492,16 +1100,19 @@ if st.session_state.get("email"):
                     elif len(new_pwd_admin) < 6:
                         st.error("Password must be at least 6 characters.")
                     else:
-                        users_db[new_email] = {
-                            "password_hash": hash_password(new_pwd_admin),
-                            "is_admin": new_is_admin,
-                            "first_name": new_first,
-                            "last_name": new_last,
-                            "position": new_position,
-                            "created_date": datetime.now().isoformat()
-                        }
-                        if save_users(users_db):
-                            st.success(f"✅ User {new_email} created with temporary password!")
+                        save_user(
+                            email=new_email,
+                            password=new_pwd_admin,
+                            is_admin=new_is_admin,
+                            first_name=new_first,
+                            last_name=new_last,
+                            position=new_position
+                        )
+                        st.success(f"✅ User {new_email} created with temporary password!")
+                        # No need to rerun, just clear the fields if desired or show success
+                        # To refresh the user list, you might need to call load_users() again
+                        # and update the state if you're displaying the list of users.
+                        # For now, a success message is sufficient.
             
             # Manage Users Tab (Admin Only)
             with tab_manage_users:
@@ -522,14 +1133,21 @@ if st.session_state.get("email"):
                         with col2:
                             if st.button("Reset Password", key="reset_pwd_btn"):
                                 temp_pwd = secrets.token_urlsafe(8)
-                                users_db[user_to_manage]["password_hash"] = hash_password(temp_pwd)
-                                if save_users(users_db):
-                                    st.success(f"✅ Password reset! Temporary password: `{temp_pwd}`")
+                                # We need to preserve the user's other data
+                                user_data = users_db[user_to_manage]
+                                save_user(
+                                    email=user_to_manage,
+                                    password=temp_pwd,
+                                    is_admin=user_data.get('is_admin', False),
+                                    first_name=user_data.get('first_name', ''),
+                                    last_name=user_data.get('last_name', ''),
+                                    position=user_data.get('position', '')
+                                )
+                                st.success(f"✅ Password reset! Temporary password: `{temp_pwd}`")
                             
                             if user_to_manage != st.session_state.email:
                                 if st.button("Delete User", key="delete_user_btn"):
-                                    del users_db[user_to_manage]
-                                    if save_users(users_db):
+                                    if delete_user(user_to_manage):
                                         st.success(f"✅ User {user_to_manage} deleted.")
                                         st.rerun()
                 else:
@@ -598,18 +1216,20 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 "Scenario Simulator",
                 "Tone Polisher",
                 "Assign Scenarios",
+                "Assigned Scenarios",
                 "Pending Review",
                 "Guiding NORTH Framework",
                 "Org Chart",
                 "Results & Progress"
             ]
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(tab_names)
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(tab_names)
             assign_scenarios_tab = tab3
-            pending_review_tab = tab4
-            framework_tab = tab5
-            org_chart_tab = tab6
+            assigned_scenarios_tab = tab4
+            pending_review_tab = tab5
+            framework_tab = tab6
+            org_chart_tab = tab7
             config_tab = None
-            results_tab = tab7
+            results_tab = tab8
         else:
             tab_names = [
                 "Scenario Simulator",
@@ -632,44 +1252,43 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         st.write("Practice applying the Guiding North Framework in realistic situations.")
 
         if not STAFF_ROLES:
-             st.warning("No staff roles configured. Please add roles in the Configuration tab.")
-             st.stop()
-
-        # Admin can practice as any role, supervisors can practice as their direct reports
-        if st.session_state.get("is_admin"):
-            available_roles = list(STAFF_ROLES.keys())
-        elif st.session_state.get("user_role") == "supervisor":
-            available_roles = [st.session_state.position] + st.session_state.get('direct_reports', [])
+            st.warning("No staff roles configured. Please add roles in the **Configuration** tab.")
+            _tab1_ready = False
         else:
-            available_roles = [st.session_state.position]
-        
-        # Ensure the list only contains valid roles from STAFF_ROLES
-        available_roles = [role for role in available_roles if role in STAFF_ROLES]
+            # Admin can practice as any role, supervisors can practice as their direct reports
+            if st.session_state.get("is_admin"):
+                available_roles = list(STAFF_ROLES.keys())
+            elif st.session_state.get("user_role") == "supervisor":
+                available_roles = [st.session_state.position] + st.session_state.get('direct_reports', [])
+            else:
+                available_roles = [st.session_state.position]
+            
+            # Ensure the list only contains valid roles from STAFF_ROLES
+            available_roles = [role for role in available_roles if role in STAFF_ROLES]
 
-        if not available_roles:
-            st.warning("No roles available for you to simulate. Please check the configuration.")
-            st.stop()
-        
-        selected_role = st.selectbox("Select Your Role:", available_roles, key="role_selector")
-        difficulty = st.selectbox(
-            "Select Scenario Difficulty:",
-            ("Standard", "Challenging", "Complex"),
-            key="difficulty_selector"
-        )
-        if selected_role not in STAFF_ROLES:
-            st.warning("Selected role is not configured. Please update roles in the Configuration tab.")
-            st.stop()
+            if not available_roles:
+                st.warning("No roles available for you to simulate. Please check the configuration.")
+                _tab1_ready = False
+            else:
+                _tab1_ready = True
 
-        if "scenario" not in st.session_state:
-            st.session_state.scenario = ""
-        if "evaluation" not in st.session_state:
-            st.session_state.evaluation = ""
+        if _tab1_ready:
+            selected_role = st.selectbox("Select Your Role:", available_roles, key="role_selector")
+            difficulty = st.selectbox(
+                "Select Scenario Difficulty:",
+                ("Standard", "Challenging", "Complex"),
+                key="difficulty_selector"
+            )
 
-        if "last_building" not in st.session_state:
-            st.session_state.last_building = None
-        if "building_history" not in st.session_state:
-            st.session_state.building_history = []
-
+        if _tab1_ready and selected_role in STAFF_ROLES:
+            if "scenario" not in st.session_state:
+                st.session_state.scenario = ""
+            if "evaluation" not in st.session_state:
+                st.session_state.evaluation = ""
+            if "last_building" not in st.session_state:
+                st.session_state.last_building = None
+            if "building_history" not in st.session_state:
+                st.session_state.building_history = []
         if st.button("🎲 Generate New Scenario", key="generate_scenario_button"):
             with st.spinner("Generating a new scenario..."):
                 role_info = STAFF_ROLES.get(selected_role, {})
@@ -823,9 +1442,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         {GUIDING_NORTH_FRAMEWORK}
                         ---
 
-                        **Operational Knowledge Base (protocols & policies):**
+                        **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                         ---
-                        {HRL_KNOWLEDGE_BASE}
+                        {load_knowledge_base()}
                         ---
 
                         **UND Housing Website Notes (public info & links):**
@@ -900,6 +1519,26 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                 )
                             )
                             st.session_state.evaluation = evaluation_response.text
+                            # Save result to DB for supervisor review
+                            overall_score = "Not Found"
+                            for line in evaluation_response.text.splitlines():
+                                m = re.search(r"OVERALL_SCORE\s*:\s*([1-4])", line)
+                                if m:
+                                    overall_score = m.group(1)
+                                    break
+                            save_results({
+                                "first_name": st.session_state.get("first_name", ""),
+                                "last_name": st.session_state.get("last_name", ""),
+                                "email": st.session_state.get("email", ""),
+                                "timestamp": datetime.now().isoformat(),
+                                "role": selected_role,
+                                "difficulty": difficulty,
+                                "scenario": st.session_state.scenario,
+                                "user_response": user_response,
+                                "evaluation": evaluation_response.text,
+                                "overall_score": overall_score,
+                                "exemplary_response": extract_exemplary_response(evaluation_response.text),
+                            })
                         except Exception as e:
                             st.error(f"Error evaluating response: {e}")
                 else:
@@ -957,15 +1596,33 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             st.header("Call Analysis")
             st.write("Analyze customer phone call transcripts based on the Guiding North Framework.")
             
-            # User Information
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                call_first_name = st.text_input("First Name:", key="call_first_name")
-            with col2:
-                call_last_name = st.text_input("Last Name:", key="call_last_name")
-            with col3:
-                call_email = st.text_input("Email:", key="call_email")
-            with col4:
+            # Staff selector — auto-fills fields from DB
+            call_users_db = load_users()
+            call_staff_options = {"-- Select a staff member --": None}
+            for _email, _u in sorted(call_users_db.items(), key=lambda x: (x[1].get('last_name',''), x[1].get('first_name',''))):
+                _label = f"{_u.get('first_name','')} {_u.get('last_name','')} ({_email})".strip()
+                call_staff_options[_label] = _email
+
+            selected_staff_label = st.selectbox(
+                "Select Staff Member:",
+                options=list(call_staff_options.keys()),
+                key="call_staff_selector"
+            )
+            selected_staff_email = call_staff_options[selected_staff_label]
+
+            if selected_staff_email:
+                _sd = call_users_db[selected_staff_email]
+                call_first_name = _sd.get("first_name", "")
+                call_last_name  = _sd.get("last_name", "")
+                call_email      = selected_staff_email
+                _default_role   = _sd.get("position", "")
+                _role_options   = list(STAFF_ROLES.keys())
+                _role_index     = _role_options.index(_default_role) if _default_role in _role_options else 0
+                call_role = st.selectbox("Role:", _role_options, index=_role_index, key="call_role")
+            else:
+                call_first_name = ""
+                call_last_name  = ""
+                call_email      = ""
                 call_role = st.selectbox("Role:", list(STAFF_ROLES.keys()), key="call_role")
             
             analysis_method = st.radio(
@@ -993,9 +1650,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             {GUIDING_NORTH_FRAMEWORK}
                             ---
 
-                            **Operational Knowledge Base (protocols & policies):**
+                            **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                             ---
-                            {HRL_KNOWLEDGE_BASE}
+                            {load_knowledge_base()}
                             ---
 
                             **UND Housing Website Notes (public info & links):**
@@ -1033,6 +1690,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             4. Conclude with a full, detailed 'Exemplary Call Example' that demonstrates how a top-performing staff member would have handled the call from start to finish.
 
                             **Output Format (Strict):**
+                            ### Call Transcript:
+                            [Full transcript of the call]
+
+                            ---
+
                             ### Guiding NORTH Evaluation:
 
                             OVERALL_SCORE: [Your 1-4 Rating]
@@ -1095,7 +1757,6 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                             break
                                     
                                     # Save result
-                                    results = load_results()
                                     new_result = {
                                         "first_name": call_first_name,
                                         "last_name": call_last_name,
@@ -1106,10 +1767,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                         "scenario": f"Phone Call Transcript (Length: {len(call_transcript)} chars)",
                                         "user_response": call_transcript,
                                         "evaluation": analysis_response.text,
-                                        "overall_score": overall_score
+                                        "overall_score": overall_score,
+                                        "exemplary_response": extract_exemplary_response(analysis_response.text),
                                     }
-                                    results.append(new_result)
-                                    if save_results(results):
+                                    if save_results(new_result):
                                         st.success("Call analysis saved successfully!")
                                     else:
                                         st.error("Failed to save the analysis.")
@@ -1156,9 +1817,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     {GUIDING_NORTH_FRAMEWORK}
                                     ---
 
-                                    **Operational Knowledge Base (protocols & policies):**
+                                    **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                                     ---
-                                    {HRL_KNOWLEDGE_BASE}
+                                    {load_knowledge_base()}
                                     ---
 
                                     **UND Housing Website Notes (public info & links):**
@@ -1266,7 +1927,6 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                                 break
                                         
                                         # Save result
-                                        results = load_results()
                                         new_result = {
                                             "first_name": call_first_name,
                                             "last_name": call_last_name,
@@ -1277,10 +1937,10 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                             "scenario": f"Phone Call Recording ({uploaded_audio.name})",
                                             "user_response": analysis_response.text[:1000],  # Store first 1000 chars of full response
                                             "evaluation": analysis_response.text,
-                                            "overall_score": overall_score
+                                            "overall_score": overall_score,
+                                            "exemplary_response": extract_exemplary_response(analysis_response.text),
                                         }
-                                        results.append(new_result)
-                                        if save_results(results):
+                                        if save_results(new_result):
                                             st.success("Call analysis saved successfully!")
                                         else:
                                             st.error("Failed to save the analysis.")
@@ -1382,19 +2042,30 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         options=scenario_topics,
                         key="assign_scenario_topic"
                     )
+                    selected_difficulty = st.selectbox(
+                        "Select difficulty level:",
+                        options=["Standard", "Challenging", "Complex"],
+                        key="assign_scenario_difficulty"
+                    )
                 
                 # Generate scenario button
                 if st.button("Generate and Assign Scenario", key="generate_assign_scenario_btn"):
                     if not selected_staff:
                         st.error("Please select at least one staff member.")
                     else:
-                        with st.spinner(f"Generating {selected_topic} scenario for {len(selected_staff)} staff member(s)..."):
+                        with st.spinner(f"Generating {selected_difficulty} {selected_topic} scenario for {len(selected_staff)} staff member(s)..."):
                             try:
                                 # Generate the scenario
                                 scenario_prompt = f"""Generate a realistic housing and residence life training scenario for the role: {selected_role}.
 
 SCENARIO REQUIREMENTS:
 Topic: {selected_topic}
+Difficulty: {selected_difficulty}
+
+Difficulty guidance:
+- Standard: A straightforward, single-issue situation a new staff member could handle with basic training.
+- Challenging: A more nuanced situation involving multiple considerations, competing priorities, or an escalating student.
+- Complex: A high-stakes, multi-faceted situation requiring advanced judgment, policy knowledge, and de-escalation skills.
 
 USE THIS AUTHENTIC UND HOUSING INFORMATION:
 {UND_HOUSING_CONTEXT}
@@ -1450,32 +2121,22 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                                 )
                                 
                                 # Save the assignment
-                                assignments_data = load_assignments()
-                                
+                                all_users_db = load_users()
                                 for staff_email in selected_staff:
-                                    user_data = load_users().get(staff_email, {})
-                                    assignment = {
-                                        "id": f"{int(datetime.now().timestamp())}_{staff_email}",
-                                        "supervisor_email": st.session_state.get("email"),
-                                        "supervisor_name": f"{st.session_state.get('first_name')} {st.session_state.get('last_name')}",
-                                        "staff_email": staff_email,
-                                        "staff_name": f"{user_data.get('first_name', 'Staff')} {user_data.get('last_name', 'Member')}".strip(),
-                                        "assigned_role": selected_role,
-                                        "staff_position": user_data.get('position', selected_role),
-                                        "topic": selected_topic,
-                                        "scenario": generated_scenario,
-                                        "assigned_date": datetime.now().isoformat(),
-                                        "completed": False,
-                                        "response": None,
-                                        "response_date": None
-                                    }
-                                    assignments_data["assignments"].append(assignment)
+                                    user_data = all_users_db.get(staff_email, {})
+                                    save_assignment(
+                                        email=staff_email,
+                                        scenario_name=selected_topic,
+                                        supervisor_email=st.session_state.get("email"),
+                                        supervisor_name=f"{st.session_state.get('first_name', '')} {st.session_state.get('last_name', '')}".strip(),
+                                        staff_name=f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or staff_email,
+                                        assigned_role=selected_role,
+                                        scenario_text=generated_scenario,
+                                        difficulty=selected_difficulty
+                                    )
                                 
-                                if save_assignments(assignments_data):
-                                    st.success(f"✅ Scenario assigned to {len(selected_staff)} staff member(s)!")
-                                    st.info("They will see the scenario in their \"Assigned Scenarios\" section.")
-                                else:
-                                    st.error("Failed to save the assignment.")
+                                st.success(f"✅ Scenario assigned to {len(selected_staff)} staff member(s)!")
+                                st.info("They will see the scenario in their \"Assigned Scenarios\" section.")
                                     
                             except Exception as e:
                                 st.error(f"Error generating scenario: {e}")
@@ -1507,10 +2168,9 @@ Keep the scenario concise but realistic. Present only the scenario and task with
             # Load assigned scenarios and filter for pending review
             assignments_data = load_assignments()
             pending_assignments = [
-                (idx, a) for idx, a in enumerate(assignments_data.get("assignments", []))
-                if a.get("completed")
-                and not a.get("reviewed")
-                and a.get("staff_email") in visible_users
+                (idx, a) for idx, a in enumerate(assignments_data)
+                if a.get("status") == "completed"
+                and a.get("email") in visible_users
             ]
             
             if not pending_results and not pending_assignments:
@@ -1547,7 +2207,87 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                         
                         st.subheader("🔍 AI Evaluation")
                         st.markdown(result.get('evaluation', 'N/A'))
-                        
+
+                        # ── Exemplary Response Review ──────────────────────────
+                        exemplary = result.get('exemplary_refined') or result.get('exemplary_response')
+                        st.divider()
+                        st.subheader("🌟 Review AI Exemplary Response")
+                        st.markdown("#### Current AI Exemplary Response")
+                        if exemplary:
+                            st.info(exemplary)
+                        else:
+                            st.warning("No exemplary response was extracted from this evaluation. You can paste one below to start the review process.")
+                            exemplary = ""
+
+                        st.markdown("#### Your Corrections / Annotations")
+                        st.caption("Describe anything the AI got wrong, missed, or should emphasize differently. You can also paste a corrected version directly.")
+                        feedback_val = result.get('exemplary_feedback') or ""
+                        exemplary_feedback = st.text_area(
+                            "Corrections:",
+                            value=feedback_val,
+                            height=150,
+                            key=f"ex_feedback_{idx}_{result.get('id')}"
+                        )
+
+                        refine_col, save_col = st.columns(2)
+                        with refine_col:
+                            if st.button("🤖 Refine with AI", key=f"refine_ex_{idx}_{result.get('id')}"):
+                                if exemplary_feedback.strip():
+                                    with st.spinner("Refining exemplary response..."):
+                                        try:
+                                            if exemplary:
+                                                refine_prompt = f"""You previously wrote an exemplary response example for a housing & residence life training scenario/call. A supervisor has reviewed it and provided corrections.
+
+SCENARIO / CALL CONTEXT:
+{result.get('scenario', '')}
+
+YOUR ORIGINAL EXEMPLARY RESPONSE:
+{exemplary}
+
+SUPERVISOR CORRECTIONS / ANNOTATIONS:
+{exemplary_feedback}
+
+Please rewrite the exemplary response incorporating the supervisor's corrections. Keep the same structure and UND-specific context but fix the issues identified. Output only the revised exemplary response text."""
+                                            else:
+                                                refine_prompt = f"""Generate an exemplary response example for the following housing & residence life training scenario/call, taking the supervisor's notes into account.
+
+SCENARIO / CALL CONTEXT:
+{result.get('scenario', '')}
+
+AI EVALUATION SUMMARY:
+{result.get('evaluation', '')[:2000]}
+
+SUPERVISOR NOTES:
+{exemplary_feedback}
+
+Output only the exemplary response text."""
+                                            refine_result = client.models.generate_content(
+                                                model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
+                                                contents=refine_prompt
+                                            )
+                                            refined_text = refine_result.text if refine_result.text else ""
+                                            if update_result(
+                                                result.get('id'),
+                                                exemplary_feedback=exemplary_feedback,
+                                                exemplary_refined=refined_text
+                                            ):
+                                                sync_corrections_to_knowledge_base()
+                                                st.success("✅ Exemplary response refined and saved!")
+                                                st.rerun()
+                                            else:
+                                                st.error("Failed to save refined response.")
+                                        except Exception as e:
+                                            st.error(f"Error refining response: {e}")
+                                else:
+                                    st.warning("Please add your corrections before refining.")
+                        with save_col:
+                            if st.button("💾 Save Corrections Only", key=f"save_ex_{idx}_{result.get('id')}"):
+                                if update_result(result.get('id'), exemplary_feedback=exemplary_feedback):
+                                    sync_corrections_to_knowledge_base()
+                                    st.success("Corrections saved.")
+                                    st.rerun()
+                        # ──────────────────────────────────────────────────────
+
                         st.divider()
                         
                         st.subheader("Supervisor Review")
@@ -1562,13 +2302,13 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                         
                         with col_approve:
                             if st.button("✅ Mark as Reviewed", key=f"approve_{idx}_{result.get('email')}", type="primary"):
-                                # Update the result
-                                all_results[idx]['status'] = 'completed'
-                                all_results[idx]['reviewed_by'] = st.session_state.email
-                                all_results[idx]['review_date'] = datetime.now().isoformat()
-                                all_results[idx]['supervisor_notes'] = supervisor_notes
-                                
-                                if save_results(all_results):
+                                if update_result(
+                                    result.get('id'),
+                                    status='completed',
+                                    reviewed_by=st.session_state.email,
+                                    review_date=datetime.now().isoformat(),
+                                    supervisor_notes=supervisor_notes
+                                ):
                                     st.success(f"✅ Scenario marked as reviewed!")
                                     st.rerun()
                                 else:
@@ -1609,18 +2349,11 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                             )
 
                             if st.button("✅ Mark Assigned Scenario as Reviewed", key=f"assign_review_{idx}_{assignment.get('staff_email')}"):
-                                assignments_data_updated = load_assignments()
-                                if 0 <= idx < len(assignments_data_updated.get("assignments", [])):
-                                    assignments_data_updated["assignments"][idx]["reviewed"] = True
-                                    assignments_data_updated["assignments"][idx]["reviewed_by"] = st.session_state.email
-                                    assignments_data_updated["assignments"][idx]["review_date"] = datetime.now().isoformat()
-                                    assignments_data_updated["assignments"][idx]["supervisor_feedback"] = supervisor_feedback
-
-                                    if save_assignments(assignments_data_updated):
-                                        st.success("✅ Assigned scenario marked as reviewed!")
-                                        st.rerun()
-                                    else:
-                                        st.error("Failed to update assigned scenario status.")
+                                if update_assignment_status(assignment.get('id'), 'reviewed', supervisor_feedback):
+                                    st.success("✅ Assigned scenario marked as reviewed!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to update assigned scenario status.")
 
     # Assigned Scenarios Tab - For Staff Only
     if 'assigned_scenarios_tab' in locals() and assigned_scenarios_tab is not None:
@@ -1635,8 +2368,8 @@ Keep the scenario concise but realistic. Present only the scenario and task with
             
             # Filter assignments for this staff member
             my_assignments = [
-                a for a in assignments_data.get("assignments", [])
-                if a.get("staff_email") == staff_email
+                a for a in assignments_data
+                if a.get("email") == staff_email
             ]
             
             if not my_assignments:
@@ -1646,7 +2379,7 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                 pending_tab, completed_tab = st.tabs(["Pending", "Completed"])
                 
                 with pending_tab:
-                    pending_assignments = [a for a in my_assignments if not a.get("completed", False)]
+                    pending_assignments = [a for a in my_assignments if a.get("status") == "assigned"]
                     
                     if not pending_assignments:
                         st.info("All assigned scenarios completed!")
@@ -1654,92 +2387,47 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                         for assignment in pending_assignments:
                             with st.expander(f"📋 {assignment.get('topic')} (Assigned by {assignment.get('supervisor_name')}) - {assignment.get('assigned_date', 'Unknown')[:10]}"):
                                 st.markdown("### Scenario:")
-                                st.markdown(assignment.get("scenario", "No scenario text"))
-                                
-                                st.markdown("---")
-                                st.markdown("### Your Response:")
-                                response_text = st.text_area(
-                                    "Describe how you would handle this scenario:",
-                                    value=assignment.get("response", ""),
-                                    height=200,
-                                    key=f"assignment_response_{assignment.get('id')}"
-                                )
-                                
-                                col1, col2 = st.columns(2)
+                                st.info(assignment.get("scenario", "No scenario text available."))
+
+                                col1, col2 = st.columns([3, 1])
                                 with col1:
+                                    response_key = f"response_{assignment.get('id')}"
+                                    user_response = st.text_area(
+                                        "Your Response:",
+                                        height=200,
+                                        key=response_key,
+                                        placeholder="Type your response to this scenario here..."
+                                    )
                                     if st.button("Submit Response", key=f"submit_assignment_{assignment.get('id')}"):
-                                        if response_text.strip():
-                                            with st.spinner("Analyzing your response..."):
-                                                try:
-                                                    # Generate AI analysis
-                                                    client = st.session_state.get('genai_client')
-                                                    if not client:
-                                                        st.error("AI analysis not available. Response saved but not analyzed.")
-                                                        analysis = "Analysis not available"
-                                                    else:
-                                                        analysis_prompt = f"""Evaluate this response to a housing and residence life training scenario using the Guiding North Framework pillars:
-
-**Scenario:**
-{assignment.get('scenario', 'N/A')}
-
-**Staff Response:**
-{response_text}
-
-**Framework Pillars:**
-- N (Navigate): Understand needs and root causes
-- O (Own): Take responsibility for resolution
-- R (Respond): Communicate professionally and respectfully
-- T (Timely): Act within appropriate timeframes
-- H (Help): Provide comprehensive support
-
-Please provide:
-1. Strengths of the response
-2. Areas for improvement
-3. Overall assessment using the rubric: Needs Development (1) | Proficient (3) | Exemplary (4)
-4. Specific recommendations for growth
-5. A single line exactly in this format: OVERALL_SCORE: X (where X is 1-4)
-
-Be constructive and supportive in your evaluation."""
-
-                                                        response = client.models.generate_content(
-                                                            model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
-                                                            contents=analysis_prompt
-                                                        )
-                                                        analysis = response.text if response.text else "Unable to analyze response"
-
-                                                    # Update assignment with response and analysis
-                                                    assignments_data_updated = load_assignments()
-                                                    for idx, a in enumerate(assignments_data_updated.get("assignments", [])):
-                                                        if a.get("id") == assignment.get("id"):
-                                                            assignments_data_updated["assignments"][idx]["response"] = response_text
-                                                            assignments_data_updated["assignments"][idx]["response_date"] = datetime.now().isoformat()
-                                                            assignments_data_updated["assignments"][idx]["completed"] = True
-                                                            assignments_data_updated["assignments"][idx]["ai_analysis"] = analysis
-                                                            break
-
-                                                    if save_assignments(assignments_data_updated):
-                                                        st.success("✅ Response submitted and analyzed! Your supervisor will review it soon.")
-                                                        st.rerun()
-                                                    else:
-                                                        st.error("Failed to save response.")
-                                                except Exception as e:
-                                                    st.error(f"Error analyzing response: {e}")
+                                        if user_response.strip():
+                                            try:
+                                                with st.spinner("Analyzing your response with AI..."):
+                                                    analysis_prompt = f"""Evaluate this staff response using the Guiding NORTH framework.
+Role: {assignment.get('assigned_role', 'Staff')}
+Scenario: {assignment.get('scenario', '')}
+Response: {user_response}
+Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
+                                                    ai_result = client.models.generate_content(
+                                                        model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
+                                                        contents=analysis_prompt
+                                                    )
+                                                    ai_analysis = ai_result.text if ai_result.text else "Unable to analyze response."
+                                                save_assignment_response(assignment.get('id'), user_response, ai_analysis)
+                                                st.success("✅ Response submitted successfully!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error analyzing response: {e}")
                                         else:
                                             st.warning("Please enter your response.")
-                                
+
                                 with col2:
                                     if st.button("Delete Assignment", key=f"delete_assignment_{assignment.get('id')}"):
-                                        assignments_data_updated = load_assignments()
-                                        assignments_data_updated["assignments"] = [
-                                            a for a in assignments_data_updated.get("assignments", [])
-                                            if a.get("id") != assignment.get("id")
-                                        ]
-                                        if save_assignments(assignments_data_updated):
+                                        if delete_assignment(assignment.get('id')):
                                             st.success("Assignment removed.")
                                             st.rerun()
                 
                 with completed_tab:
-                    completed_assignments = [a for a in my_assignments if a.get("completed", False)]
+                    completed_assignments = [a for a in my_assignments if a.get("status") in ("completed", "reviewed")]
                     
                     if not completed_assignments:
                         st.info("No completed scenarios yet.")
@@ -1933,7 +2621,7 @@ Be constructive and supportive in your evaluation."""
             role_to_names.setdefault(role, []).append(name)
 
         if not display_org_chart['nodes']:
-            st.warning("No staff roles defined. Please add roles in the Configuration tab to build the chart.")
+            st.warning("No staff roles defined. Please add roles in the Configuration tab.")
         else:
             nodes = []
             for role in display_org_chart['nodes']:
@@ -2190,6 +2878,56 @@ Be constructive and supportive in your evaluation."""
                             "Account Created": "N/A"  # Could add timestamp if tracked
                         })
 
+            # Knowledge Base Editor
+            st.divider()
+            st.subheader("📖 HRL Knowledge Base Editor")
+            st.caption("Edit the authoritative knowledge base used by the AI for all evaluations. The auto-generated supervisor corrections section at the bottom is managed automatically — manual edits above that marker are safe.")
+            with st.expander("Edit HRL Knowledge Base", expanded=False):
+                kb_content = load_knowledge_base()
+                edited_kb = st.text_area(
+                    "Knowledge Base Content:",
+                    value=kb_content,
+                    height=500,
+                    key="kb_editor_content"
+                )
+                kb_col1, kb_col2 = st.columns([1, 3])
+                with kb_col1:
+                    if st.button("💾 Save Knowledge Base", key="save_kb_btn", type="primary"):
+                        try:
+                            with open(KNOWLEDGE_BASE_FILE, 'w', encoding='utf-8') as f:
+                                f.write(edited_kb)
+                            st.success("✅ Knowledge Base saved successfully!")
+                        except Exception as e:
+                            st.error(f"Failed to save: {e}")
+                with kb_col2:
+                    st.caption("⚠️ Saving will overwrite the file. The supervisor corrections section will be re-appended on the next correction save.")
+
+            # Correction Library Section
+            st.divider()
+            st.subheader("📚 Exemplary Correction Library")
+            st.caption("All supervisor-refined exemplary responses. These are automatically used as quality benchmarks when the AI generates future exemplary responses.")
+            correction_examples = load_exemplary_examples(limit=50)
+            if not correction_examples:
+                st.info("No supervisor-refined exemplary responses yet. Use the 'Refine with AI' feature in Pending Review or Results & Progress to build your library.")
+            else:
+                st.success(f"✅ {len(correction_examples)} approved exemplary response(s) in the library. The AI learns from all of them.")
+                for j, ex in enumerate(correction_examples, 1):
+                    review_date = ex.get('review_date', '')
+                    date_str = str(review_date)[:10] if review_date else "Unknown date"
+                    reviewer = ex.get('reviewed_by', 'Unknown reviewer')
+                    scenario_preview = (ex.get('scenario') or '')[:80]
+                    with st.expander(f"Example {j} — {date_str} — {reviewer} — {scenario_preview}...", expanded=False):
+                        st.markdown("**Scenario Context:**")
+                        st.info(ex.get('scenario') or 'N/A')
+                        if ex.get('exemplary_response'):
+                            st.markdown("**Original AI Exemplary:**")
+                            st.markdown(ex.get('exemplary_response'))
+                        if ex.get('exemplary_feedback'):
+                            st.markdown("**Supervisor Corrections Applied:**")
+                            st.warning(ex.get('exemplary_feedback'))
+                        st.markdown("**✅ Final Approved Exemplary Response:**")
+                        st.success(ex.get('exemplary_refined') or 'N/A')
+
     with results_tab:
         st.header("Results & Progress")
         st.write("Review past performance and track development.")
@@ -2256,8 +2994,8 @@ Be constructive and supportive in your evaluation."""
         # Also include completed assigned scenarios
         assignments_data = load_assignments()
         users_db = load_users()
-        for assignment in assignments_data.get("assignments", []):
-            if assignment.get("completed") and assignment.get("reviewed"):
+        for assignment in assignments_data:
+            if assignment.get("status") in ("completed", "reviewed"):
                 # Get the staff email as unique identifier
                 staff_email = assignment.get("staff_email", "")
                 
@@ -2330,20 +3068,18 @@ Be constructive and supportive in your evaluation."""
                         evaluation_text = res.get("evaluation", "")
                         parsed_score = parse_overall_score(evaluation_text)
                         if parsed_score and (not is_valid_score(res.get("overall_score")) or res.get("overall_score") != parsed_score):
-                            res["overall_score"] = parsed_score
+                            update_result(res.get('id'), overall_score=parsed_score)
                             updated_results += 1
 
                     assignments_data = load_assignments()
                     updated_assignments = 0
-                    for assignment in assignments_data.get("assignments", []):
+                    for assignment in assignments_data:
                         analysis_text = assignment.get("ai_analysis", "")
                         parsed_score = parse_overall_score(analysis_text)
                         if parsed_score and (not is_valid_score(assignment.get("overall_score")) or assignment.get("overall_score") != parsed_score):
                             assignment["overall_score"] = parsed_score
                             updated_assignments += 1
 
-                    save_results(results_data)
-                    save_assignments(assignments_data)
                     st.success(f"Updated scores in results: {updated_results}, assignments: {updated_assignments}.")
                     st.rerun()
 
@@ -2424,7 +3160,7 @@ OVERALL_SCORE: [Your 1-4 Rating]
                             if option_id.startswith("assignment:"):
                                 assignment_id = option_id.split(":", 1)[1]
                                 assignment = next(
-                                    (a for a in assignments_data_updated.get("assignments", []) if str(a.get("id")) == assignment_id),
+                                    (a for a in assignments_data_updated if str(a.get("id")) == assignment_id),
                                     None
                                 )
                                 if not assignment:
@@ -2449,6 +3185,12 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                     parsed_score = parse_overall_score(analysis_text)
                                     if parsed_score:
                                         assignment["overall_score"] = parsed_score
+                                    # Persist updated analysis to DB
+                                    save_assignment_response(
+                                        assignment.get('id'),
+                                        assignment.get('response', ''),
+                                        analysis_text
+                                    )
                                     updated_assignments += 1
                                 except Exception:
                                     errors += 1
@@ -2482,11 +3224,11 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                     parsed_score = parse_overall_score(analysis_text)
                                     if parsed_score:
                                         res["overall_score"] = parsed_score
+                                    update_result(res.get('id'), evaluation=analysis_text, overall_score=res.get('overall_score'))
                                     updated_results += 1
                                 except Exception:
                                     errors += 1
 
-                        save_results(results_data)
                         save_assignments(assignments_data_updated)
                         st.success(
                             f"Rerun complete. Updated results: {updated_results}, assignments: {updated_assignments}, skipped: {skipped}, errors: {errors}."
@@ -2780,27 +3522,23 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                     )
                                     if st.button("Delete Result", key=delete_key):
                                         if result.get("is_assigned") and result.get("assignment_id"):
-                                            assignments_data_updated = load_assignments()
-                                            assignments_data_updated["assignments"] = [
-                                                a for a in assignments_data_updated.get("assignments", [])
-                                                if a.get("id") != result.get("assignment_id")
-                                            ]
-                                            save_assignments(assignments_data_updated)
+                                            if delete_assignment(result.get("assignment_id")):
+                                                st.success("Result deleted.")
+                                                st.rerun()
                                         else:
-                                            results_data_updated = load_results()
-                                            result_index = result.get("_result_index")
-                                            if isinstance(result_index, int) and 0 <= result_index < len(results_data_updated):
-                                                results_data_updated.pop(result_index)
+                                            if result.get('id'):
+                                                delete_result(result.get('id'))
                                             else:
-                                                results_data_updated = [
-                                                    r for r in results_data_updated
-                                                    if not (
-                                                        r.get("email") == result.get("email") and
-                                                        r.get("timestamp") == result.get("timestamp") and
-                                                        r.get("scenario") == result.get("scenario")
-                                                    )
-                                                ]
-                                            save_results(results_data_updated)
+                                                # Fallback: match by email+timestamp
+                                                results_data_updated = load_results()
+                                                matched = next(
+                                                    (r for r in results_data_updated
+                                                     if r.get('email') == result.get('email')
+                                                     and r.get('timestamp') == result.get('timestamp')),
+                                                    None
+                                                )
+                                                if matched and matched.get('id'):
+                                                    delete_result(matched.get('id'))
 
                                         st.success("Result deleted.")
                                         st.rerun()
@@ -2818,8 +3556,6 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                             formatted_review_date = review_dt.strftime("%B %d, %Y at %I:%M %p")
                                         except:
                                             formatted_review_date = review_date
-                                    else:
-                                        formatted_review_date = review_date
                                     
                                     st.success(f"✅ Reviewed by: **{result.get('reviewed_by')}**")
                                     st.success(f"📅 Review Date: **{formatted_review_date}**")
@@ -2835,6 +3571,92 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                 st.warning(result.get('user_response', 'N/A'))
                                 st.markdown("#### AI Evaluation")
                                 st.markdown(result.get('evaluation', 'N/A'))
+
+                                # Show / edit exemplary response
+                                exemplary_to_show = result.get('exemplary_refined') or result.get('exemplary_response')
+                                can_edit_exemplary = (
+                                    (st.session_state.get('is_admin') or st.session_state.get('user_role') == 'supervisor')
+                                    and not result.get('is_assigned')
+                                    and result.get('id')
+                                )
+                                st.markdown("---")
+                                st.markdown("#### 🌟 Exemplary Response")
+                                if exemplary_to_show:
+                                    label = "Supervisor-Refined" if result.get('exemplary_refined') else "AI Generated"
+                                    st.caption(label)
+                                    st.success(exemplary_to_show)
+                                    if result.get('exemplary_feedback'):
+                                        st.markdown("**Supervisor Corrections Applied:**")
+                                        st.caption(result.get('exemplary_feedback'))
+                                else:
+                                    st.warning("No exemplary response has been extracted yet.")
+
+                                if can_edit_exemplary:
+                                    st.markdown("**Edit Exemplary Response**")
+                                    rp_feedback_val = result.get('exemplary_feedback') or ""
+                                    rp_exemplary_feedback = st.text_area(
+                                        "Your Corrections / Annotations:",
+                                        value=rp_feedback_val,
+                                        height=120,
+                                        key=f"rp_ex_feedback_{i}_{result.get('id')}"
+                                    )
+                                    rp_col1, rp_col2 = st.columns(2)
+                                    with rp_col1:
+                                        if st.button("🤖 Refine with AI", key=f"rp_refine_{i}_{result.get('id')}"):
+                                            if rp_exemplary_feedback.strip():
+                                                with st.spinner("Refining exemplary response..."):
+                                                    try:
+                                                        if exemplary_to_show:
+                                                            rp_prompt = f"""You previously wrote an exemplary response example for a housing & residence life training scenario/call. A supervisor has reviewed it and provided corrections.
+
+SCENARIO / CALL CONTEXT:
+{result.get('scenario', '')}
+
+YOUR ORIGINAL EXEMPLARY RESPONSE:
+{exemplary_to_show}
+
+SUPERVISOR CORRECTIONS / ANNOTATIONS:
+{rp_exemplary_feedback}
+
+Please rewrite the exemplary response incorporating the supervisor's corrections. Keep the same structure and UND-specific context but fix the issues identified. Output only the revised exemplary response text."""
+                                                        else:
+                                                            rp_prompt = f"""Generate an exemplary response example for the following housing & residence life training scenario/call, taking the supervisor's notes into account.
+
+SCENARIO / CALL CONTEXT:
+{result.get('scenario', '')}
+
+AI EVALUATION SUMMARY:
+{result.get('evaluation', '')[:2000]}
+
+SUPERVISOR NOTES:
+{rp_exemplary_feedback}
+
+Output only the exemplary response text."""
+                                                        rp_refine_result = client.models.generate_content(
+                                                            model=st.session_state.get("selected_model", "models/gemini-1.5-flash"),
+                                                            contents=rp_prompt
+                                                        )
+                                                        rp_refined_text = rp_refine_result.text if rp_refine_result.text else ""
+                                                        if update_result(
+                                                            result.get('id'),
+                                                            exemplary_feedback=rp_exemplary_feedback,
+                                                            exemplary_refined=rp_refined_text
+                                                        ):
+                                                            sync_corrections_to_knowledge_base()
+                                                            st.success("✅ Exemplary response refined and saved!")
+                                                            st.rerun()
+                                                        else:
+                                                            st.error("Failed to save refined response.")
+                                                    except Exception as e:
+                                                        st.error(f"Error refining response: {e}")
+                                            else:
+                                                st.warning("Please add your corrections before refining.")
+                                    with rp_col2:
+                                        if st.button("💾 Save Corrections Only", key=f"rp_save_ex_{i}_{result.get('id')}"):
+                                            if update_result(result.get('id'), exemplary_feedback=rp_exemplary_feedback):
+                                                sync_corrections_to_knowledge_base()
+                                                st.success("Corrections saved.")
+                                                st.rerun()
                 
                 # Display analytics for All Roles tab
                 with role_tabs[0]:
