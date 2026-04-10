@@ -1727,9 +1727,18 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 **Source Priority for Scenario Content:**
                 - Draw directly from the **Operational Knowledge Base** and **Relevant SOP Procedures** above when crafting the situation — use actual procedures, workflows, policies, and constraints described in those documents to make the scenario grounded in real HRL operations.
                 - Use the **Guiding NORTH Framework** to ensure the scenario tests one or more of the five pillars (N, O, R, T, H).
-                - Use the **Role Description** and **HRL Knowledge Base hours/constraints** to ensure the scenario is realistic for what this staff member would actually encounter given their role, schedule, and responsibilities.
+                - Use the **Role Description** to ensure the scenario is realistic for what this staff member would actually encounter.
+
+                **⛔ MANDATORY SCHEDULE CONSTRAINT — THIS OVERRIDES EVERYTHING ELSE:**
+                The role being assigned is: **{selected_role}**
+                The role description states: "{role_info.get('description', '')[:600]}"
+                You MUST read the hours and schedule from that description and set the scenario ONLY during a day and time when this role is actually working.
+                If the description states Monday–Friday 8:00 AM–5:00 PM, the scenario MUST occur on a weekday between 8:00 AM and 5:00 PM. No exceptions.
+                DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the role description explicitly says they work those hours.
 
                 **Critical Requirements:**
+                   - The scenario MUST take place during a day and time when the '{selected_role}' is actually scheduled to work, as stated in the Knowledge Base.
+                   - For example: if the Knowledge Base states the role only works Monday–Friday 8:00 AM–5:00 PM, then the scenario MUST occur on a weekday between 8:00 AM and 5:00 PM. NEVER place this staff member in a scenario on a weekend or after their stated hours.
                 1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
                 2. **UND Housing Realism — Use the Knowledge Base and SOPs:**
                    - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
