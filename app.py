@@ -962,6 +962,19 @@ if _token_param:
         except Exception:
             pass
 
+    # Resolve best available model for the token page
+    if not st.session_state.get("selected_model"):
+        _token_model = "models/gemini-2.0-flash"
+        _token_client_tmp = st.session_state.get("genai_client")
+        if _token_client_tmp:
+            try:
+                _available = [m.name for m in _token_client_tmp.models.list() if "gemini" in m.name.lower()]
+                if _available:
+                    _token_model = _available[0]
+            except Exception:
+                pass
+        st.session_state.selected_model = _token_model
+
     st.markdown("## 🧭 Guiding North — Training Scenario")
     st.divider()
 
@@ -1068,7 +1081,7 @@ OVERALL_SCORE: [1-4]
 **Exemplary Response Example:**
 [full exemplary response]"""
                         _token_result = _token_client.models.generate_content(
-                            model="models/gemini-1.5-flash",
+                            model=st.session_state.get("selected_model", "models/gemini-2.0-flash"),
                             contents=_token_eval_prompt,
                             config=types.GenerateContentConfig(temperature=0.5, max_output_tokens=8000)
                         )
