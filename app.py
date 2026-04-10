@@ -1697,9 +1697,14 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             with st.spinner("Generating a new scenario..."):
                 role_info = STAFF_ROLES.get(selected_role, {})
                 last_scenario_text = st.session_state.scenario.strip() if st.session_state.scenario else "None"
-                building_history_text = ", ".join(st.session_state.building_history[-5:]) if st.session_state.building_history else "None"
-                
-                # Build role-specific scenario guidance
+                # Extract work hours/schedule from role description
+                _role_desc_full = role_info.get('description', '')
+                _hours_idx = _role_desc_full.lower().find('hours')
+                if _hours_idx != -1:
+                    _role_schedule_text = _role_desc_full[max(0, _hours_idx - 30):_hours_idx + 600].strip()
+                else:
+                    _role_schedule_text = "No specific hours defined — use standard weekday business hours (Mon–Fri, 8 AM–5 PM)."
+
                 role_specific_guidance = ""
                 if "Resident Director" in selected_role or "Apt RD" in selected_role or "RD" in selected_role:
                     role_specific_guidance = """
@@ -1769,14 +1774,14 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
                 **⛔ MANDATORY SCHEDULE CONSTRAINT — THIS OVERRIDES EVERYTHING ELSE:**
                 The role being assigned is: **{selected_role}**
-                The role description states: "{role_info.get('description', '')[:600]}"
-                You MUST read the hours and schedule from that description and set the scenario ONLY during a day and time when this role is actually working.
-                If the description states Monday–Friday 8:00 AM–5:00 PM, the scenario MUST occur on a weekday between 8:00 AM and 5:00 PM. No exceptions.
-                DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the role description explicitly says they work those hours.
+                The hours and schedule extracted directly from this role's job description are:
+                ---
+                {_role_schedule_text}
+                ---
+                You MUST set the scenario ONLY during a day and time when this role is scheduled to work per the above.
+                DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the hours above explicitly state they work those times.
 
                 **Critical Requirements:**
-                   - The scenario MUST take place during a day and time when the '{selected_role}' is actually scheduled to work, as stated in the Knowledge Base.
-                   - For example: if the Knowledge Base states the role only works Monday–Friday 8:00 AM–5:00 PM, then the scenario MUST occur on a weekday between 8:00 AM and 5:00 PM. NEVER place this staff member in a scenario on a weekend or after their stated hours.
                 1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
                 2. **UND Housing Realism — Use the Knowledge Base and SOPs:**
                    - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
