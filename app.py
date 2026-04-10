@@ -296,7 +296,16 @@ def load_framework():
         return "Framework not available."
 
 def load_knowledge_base():
-    """Loads the HRL Knowledge Base — checks DB first, falls back to file."""
+    """Loads the HRL Knowledge Base — checks DB first, falls back to file.
+    If DB content is missing structural markers, reseeds from file automatically."""
+    _file_content = None
+    def _read_file():
+        try:
+            with open(KNOWLEDGE_BASE_FILE, 'r', encoding='utf-8', errors='replace') as f:
+                return f.read()
+        except FileNotFoundError:
+            return None
+
     db_pool = get_db_pool()
     if db_pool:
         conn = None
@@ -307,24 +316,31 @@ def load_knowledge_base():
                 row = cur.fetchone()
                 if row and row[0]:
                     val = row[0]
-                    # value may come back as a dict (JSONB auto-parse) or a string
                     if isinstance(val, dict):
-                        return val.get('content', '')
-                    try:
-                        return json.loads(val).get('content', '')
-                    except Exception:
-                        return str(val)
+                        db_content = val.get('content', '')
+                    else:
+                        try:
+                            db_content = json.loads(val).get('content', '')
+                        except Exception:
+                            db_content = str(val)
+                    # If DB content is missing markers, reseed from file
+                    if '===FEES_START===' not in db_content or '===ROLE_START:' not in db_content:
+                        _file_content = _read_file()
+                        if _file_content and ('===FEES_START===' in _file_content or '===ROLE_START:' in _file_content):
+                            cur.execute("""
+                                INSERT INTO app_config (key, value) VALUES ('hrl_knowledge_base', %s)
+                                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                            """, (json.dumps({"content": _file_content}),))
+                            conn.commit()
+                            return _file_content
+                    return db_content
         except Exception:
             pass
         finally:
             if conn:
                 db_pool.putconn(conn)
     # Fall back to file
-    try:
-        with open(KNOWLEDGE_BASE_FILE, 'r', encoding='utf-8', errors='replace') as f:
-            return f.read()
-    except FileNotFoundError:
-        return "Knowledge base not available."
+    return _file_content or _read_file() or "Knowledge base not available."
 
 def save_knowledge_base(content):
     """Saves the HRL Knowledge Base to the database."""
