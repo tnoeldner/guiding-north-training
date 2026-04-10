@@ -1403,8 +1403,9 @@ if _token_param:
 Evaluate the response using the Guiding NORTH rubric. Provide:
 1. An Overall Score (1–4)
 2. A rating and justification for each pillar (N, O, R, T, H)
-3. Specific suggestions for improvement
-4. A full Exemplary Response Example showing an ideal response
+3. If any Relevant SOP Procedures were provided above, cite the Document ID(s) (format: HRL-XXX-XX) you relied on.
+4. Specific suggestions for improvement
+5. A full Exemplary Response Example showing an ideal response
 
 **Output Format:**
 OVERALL_SCORE: [1-4]
@@ -1430,6 +1431,9 @@ OVERALL_SCORE: [1-4]
 **H - Help Proactively:**
 - **Rating:** [Needs Development | Proficient | Exemplary]
 - **Justification:** [justification]
+
+**Relevant SOP Citations:**
+(list any SOP Document IDs referenced, e.g. HRL-XXX-XX, or write "None" if no SOP documents were provided)
 
 **Suggestions for Improvement:**
 [suggestions]
@@ -1955,8 +1959,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
                         **Task:** Evaluate the user's response using the 'Evaluation Rubric' from the framework document. 
                         1. Provide an 'Overall Score' from 1 (Needs Improvement) to 4 (Exemplary).
-                        2. For each of the five pillars (N, O, R, T, H), assign a rating (Needs Development, Proficient, or Exemplary) and provide a brief justification for your rating, citing specific examples from the user's response. 
-                        3. Conclude with a full, detailed 'Exemplary Response Example' that demonstrates how a top-performing staff member would have handled the interaction from start to finish.
+                        2. For each of the five pillars (N, O, R, T, H), assign a rating (Needs Development, Proficient, or Exemplary) and provide a brief justification for your rating, citing specific examples from the user's response.
+                        3. If any Relevant SOP Procedures were provided above, cite the Document ID(s) (format: HRL-XXX-XX) of any sections you relied on in your evaluation. If no SOP documents are available, omit this section.
+                        4. Conclude with a full, detailed 'Exemplary Response Example' that demonstrates how a top-performing staff member would have handled the interaction from start to finish.
 
                         **Output Format (Strict):**
                         ### Guiding NORTH Evaluation:
@@ -1986,6 +1991,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         **H - Help Proactively:**
                         - **Rating:** [Your Rating]
                         - **Justification:** [Your Justification]
+
+                        ---
+                        **Relevant SOP Citations:** (list any SOP Document IDs referenced, e.g. HRL-XXX-XX, or write "None" if no SOP documents were provided)
 
                         ---
                         **Exemplary Response Example:**
@@ -2170,8 +2178,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             **Task:** Evaluate the staff member's phone call performance using the 'Evaluation Rubric' from the framework document.
                             1. Provide an 'Overall Score' from 1 (Needs Improvement) to 4 (Exemplary).
                             2. For each of the five pillars (N, O, R, T, H), assign a rating (Needs Development, Proficient, or Exemplary) and provide a brief justification for your rating, citing specific examples from the call transcript.
-                            3. Provide specific suggestions for improvement where applicable.
-                            4. Conclude with a full, detailed 'Exemplary Call Example' that demonstrates how a top-performing staff member would have handled the call from start to finish.
+                            3. If any Relevant SOP Procedures were provided above, cite the Document ID(s) (format: HRL-XXX-XX) of any sections you relied on in your evaluation.
+                            4. Provide specific suggestions for improvement where applicable.
+                            5. Conclude with a full, detailed 'Exemplary Call Example' that demonstrates how a top-performing staff member would have handled the call from start to finish.
 
                             **Output Format (Strict):**
                             ### Call Transcript:
@@ -2206,6 +2215,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             **H - Hope & Healing:**
                             - **Rating:** [Your Rating]
                             - **Justification:** [Your Justification]
+
+                            ---
+
+                            ### Relevant SOP Citations:
+                            (list any SOP Document IDs referenced, e.g. HRL-XXX-XX, or write "None" if no SOP documents were provided)
 
                             ---
 
@@ -2341,8 +2355,9 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     2. Then, evaluate the staff member's phone call performance using the 'Evaluation Rubric' from the framework document.
                                     3. Provide an 'Overall Score' from 1 (Needs Improvement) to 4 (Exemplary).
                                     4. For each of the five pillars (N, O, R, T, H), assign a rating (Needs Development, Proficient, or Exemplary) and provide a brief justification for your rating, citing specific examples from the call.
-                                    5. Provide specific suggestions for improvement where applicable.
-                                    6. Conclude with a full, detailed 'Exemplary Call Example' that demonstrates how a top-performing staff member would have handled the call from start to finish.
+                                    5. If any Relevant SOP Procedures were provided above, cite the Document ID(s) (format: HRL-XXX-XX) of any sections you relied on in your evaluation.
+                                    6. Provide specific suggestions for improvement where applicable.
+                                    7. Conclude with a full, detailed 'Exemplary Call Example' that demonstrates how a top-performing staff member would have handled the call from start to finish.
 
                                     **Output Format (Strict):**
                                     ### Call Transcript:
@@ -2377,6 +2392,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     **H - Hope & Healing:**
                                     - **Rating:** [Your Rating]
                                     - **Justification:** [Your Justification]
+
+                                    ---
+
+                                    ### Relevant SOP Citations:
+                                    (list any SOP Document IDs referenced, e.g. HRL-XXX-XX, or write "None" if no SOP documents were provided)
 
                                     ---
 
