@@ -139,46 +139,7 @@ BEST_PRACTICES_FILE = "housing_best_practices.md"
 CONFIG_FILE = "config.json"
 
 # --- UND Housing Context for Realistic Scenarios ---
-UND_HOUSING_CONTEXT = """
-RESIDENCE HALLS AT UND:
-Suite Style (Shared bath between 2 rooms): McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall
-Community Style (Shared floor bath): Smith Hall, Johnstone Hall (Smith/Johnstone complex)
-Apartment Style (In-unit kitchen/bath): University Place, Swanson Hall
-
-APARTMENT LOCATIONS:
-Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, 3904 University Ave
-
-KEY POLICIES & PROCEDURES:
-- Guest Policy: Max 3 consecutive nights, 6 nights total per month, must be escorted 24/7, roommate consent required
-- Quiet Hours: Sun-Thu 10 PM-10 AM, Fri-Sat 12 AM-10 AM, Courtesy Hours 24/7
-- Lockout Fees: $10 during business hours, $25 after hours, $75 for lost key recore
-- Room Changes: Frozen first 2 weeks of semester, RD approval required, unauthorized moves incur $100+ fine
-- Alcohol/Drugs: Under 21 strictly prohibited, 21+ only in all-age rooms, no paraphernalia, no empty containers under 21
-- Guest Limit: Under 18 guests generally prohibited unless immediate family
-- Maintenance: Routine within 2 business days via portal, emergency calls RA on Duty after hours
-- Move-Out: 60-day notice required, residents must clean, $165 fine for modem removal
-
-HOUSING CONTACT INFORMATION:
-- Phone: 701.777.4251
-- Email: housing@UND.edu
-- Office Hours: Monday-Friday 8:00 AM - 4:30 PM
-- After-Hours Emergency: Contact RA on Duty
-
-HOUSING RATES (2025-2026):
-- Residence Hall Double: $5,100-$6,180/year (varies by hall)
-- Residence Hall Single: $5,900-$7,300/year
-- Apartments One Bedroom: $735-$845/month
-- Apartments Two Bedroom: $830-$935/month
-- Apartments Three Bedroom: $1,010-$1,400/month
-- Apartment utilities included: Internet, Water, Sewer, Trash (electricity separate)
-
-IMPORTANT PROCESSES:
-- First-year students required to live on campus (exemptions available)
-- Housing contracts: Full academic year for halls, flexible lease terms for apartments
-- Wilkerson Service Center handles mail, packages, and key checkouts
-- Housing Self-Service portal for applications and requests
-- Room changes based on availability offered on Wednesdays
-"""
+# UND_HOUSING_CONTEXT removed — content now lives in HRL Knowledge Base (loaded fresh via load_knowledge_base())
 
 # --- Password Security Functions ---
 def hash_password(password):
@@ -1817,11 +1778,6 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 ---
                 {role_specific_guidance}
 
-                **UND Housing Information (Use to Make Scenarios Realistic):**
-                ---
-                {UND_HOUSING_CONTEXT}
-                ---
-
                 **Task:** Generate a single, detailed, and realistic scenario for a '{selected_role}'. The difficulty of this scenario should be '{difficulty}'.
 
                 **Source Priority for Scenario Content:**
@@ -2553,8 +2509,7 @@ Difficulty guidance:
 - Challenging: A more nuanced situation involving multiple considerations, competing priorities, or an escalating student.
 - Complex: A high-stakes, multi-faceted situation requiring advanced judgment, policy knowledge, and de-escalation skills.
 
-USE THIS AUTHENTIC UND HOUSING INFORMATION:
-{UND_HOUSING_CONTEXT}
+USE THIS AUTHENTIC UND HOUSING INFORMATION FROM THE KNOWLEDGE BASE ABOVE.
 
 The scenario should:
 - Reference real UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
