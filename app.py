@@ -955,7 +955,7 @@ except Exception:
 if _token_param:
     # Auto-configure Gemini from secrets (needed for AI evaluation on submission)
     _api_key_for_token = st.secrets.get("gemini_api_key", "")
-    if _api_key_for_token and not st.session_state.get("api_configured"):
+    if _api_key_for_token and not st.session_state.get("genai_client"):
         try:
             configure_genai(_api_key_for_token)
             st.session_state.api_configured = True
@@ -1012,7 +1012,8 @@ if _token_param:
         else:
             with st.spinner("Submitting and evaluating your response..."):
                 _token_client = st.session_state.get("genai_client")
-                _token_analysis = "Evaluation not available."
+                _token_analysis = None
+                _token_eval_error = None
                 if _token_client:
                     try:
                         _token_kb = load_knowledge_base()
@@ -1071,13 +1072,17 @@ OVERALL_SCORE: [1-4]
                             contents=_token_eval_prompt,
                             config=types.GenerateContentConfig(temperature=0.5, max_output_tokens=8000)
                         )
-                        _token_analysis = _token_result.text if _token_result.text else "Evaluation not available."
-                    except Exception:
-                        pass
+                        _token_analysis = _token_result.text if _token_result.text else None
+                    except Exception as _eval_err:
+                        _token_eval_error = str(_eval_err)
+                else:
+                    _token_eval_error = "Gemini API client not available."
 
-                if save_assignment_response(assignment["id"], token_user_response, _token_analysis):
+                if save_assignment_response(assignment["id"], token_user_response, _token_analysis or ""):
                     mark_token_used(assignment["id"])
                     st.success("✅ Your response has been submitted successfully!")
+                    if _token_eval_error:
+                        st.warning(f"Note: AI evaluation could not run ({_token_eval_error}). Your supervisor can re-run it from the Results tab.")
                     st.balloons()
                     st.info("Your supervisor will review your response and provide feedback. You can close this page.")
                 else:
