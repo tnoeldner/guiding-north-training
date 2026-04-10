@@ -1689,7 +1689,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
                 **Operational Knowledge Base (protocols & policies):**
                 ---
-                {HRL_KNOWLEDGE_BASE}
+                {load_knowledge_base()}
                 {retrieve_sop_context(f'{selected_role} {selected_topic}')}
                 ---
 
