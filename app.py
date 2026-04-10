@@ -284,9 +284,24 @@ def load_knowledge_base():
                             db_content = json.loads(val).get('content', '')
                         except Exception:
                             db_content = str(val)
-                    # If DB content is missing markers, reseed from file
-                    if '===FEES_START===' not in db_content or '===ROLE_START:' not in db_content:
-                        _file_content = _read_file()
+                    # If DB content is missing markers OR is behind the file's version, reseed from file
+                    _file_content = _read_file()
+                    _db_version = ''
+                    _file_version = ''
+                    import re as _re
+                    _db_ver_match = _re.search(r'===KB_VERSION:\s*([\w]+)===', db_content)
+                    if _db_ver_match:
+                        _db_version = _db_ver_match.group(1)
+                    if _file_content:
+                        _file_ver_match = _re.search(r'===KB_VERSION:\s*([\w]+)===', _file_content)
+                        if _file_ver_match:
+                            _file_version = _file_ver_match.group(1)
+                    _needs_reseed = (
+                        '===FEES_START===' not in db_content or
+                        '===ROLE_START:' not in db_content or
+                        (_file_version and _db_version != _file_version)
+                    )
+                    if _needs_reseed:
                         if _file_content and ('===FEES_START===' in _file_content or '===ROLE_START:' in _file_content):
                             cur.execute("""
                                 INSERT INTO app_config (key, value) VALUES ('hrl_knowledge_base', %s)
@@ -3476,7 +3491,17 @@ Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
                         except Exception:
                             pass
                 with kb_col2:
-                    st.caption("⚠️ Saving will overwrite the file. The supervisor corrections section will be re-appended on the next correction save.")
+                    if st.button("🔄 Reset from File", key="reset_kb_btn", help="Discard DB content and reload the bundled HRLKnowledgeBase file. Use this when the UI shows stale content after a GitHub push."):
+                        try:
+                            with open(KNOWLEDGE_BASE_FILE, 'r', encoding='utf-8', errors='replace') as _f:
+                                _fresh = _f.read()
+                            if save_knowledge_base(_fresh):
+                                st.success("✅ Knowledge Base reset from file and saved to database. Refresh the page to see updated content.")
+                                st.rerun()
+                            else:
+                                st.error("❌ Could not save to database.")
+                        except FileNotFoundError:
+                            st.error("❌ HRLKnowledgeBase file not found.")
 
             # Correction Library Section
             st.divider()
