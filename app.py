@@ -640,6 +640,27 @@ def retrieve_sop_context(query_text):
         f"{joined}\n===END SOP PROCEDURES===\n"
     )
 
+def get_role_kb_entry(role_name):
+    """Extract the entry for a specific role from the HRL Knowledge Base.
+    Searches for the role name and returns text until the next role or section heading."""
+    kb = load_knowledge_base()
+    # Find the role name in the KB (case-insensitive)
+    idx = kb.lower().find(role_name.lower())
+    if idx == -1:
+        # Try partial match on first significant word
+        first_word = role_name.split()[0].lower()
+        idx = kb.lower().find(first_word)
+    if idx == -1:
+        return ""
+    # Extract from the role name forward, up to ~1000 chars or the next heading/role
+    snippet = kb[idx:idx + 1000]
+    # Truncate at the next blank-line-preceded capital line (new section) after 100 chars
+    import re
+    cutoff = re.search(r'\n\n[A-Z][^\n]{3,}:', snippet[100:])
+    if cutoff:
+        snippet = snippet[:100 + cutoff.start()]
+    return snippet.strip()
+
 def load_exemplary_examples(limit=5):
     """Loads supervisor-refined exemplary responses for few-shot prompting."""
     db_pool = get_db_pool()
@@ -1697,13 +1718,16 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
             with st.spinner("Generating a new scenario..."):
                 role_info = STAFF_ROLES.get(selected_role, {})
                 last_scenario_text = st.session_state.scenario.strip() if st.session_state.scenario else "None"
-                # Extract work hours/schedule from role description
-                _role_desc_full = role_info.get('description', '')
-                _hours_idx = _role_desc_full.lower().find('hours')
-                if _hours_idx != -1:
-                    _role_schedule_text = _role_desc_full[max(0, _hours_idx - 30):_hours_idx + 600].strip()
-                else:
-                    _role_schedule_text = "No specific hours defined — use standard weekday business hours (Mon–Fri, 8 AM–5 PM)."
+                # Extract role schedule/constraints from the HRL Knowledge Base (authoritative source)
+                _role_kb_entry = get_role_kb_entry(selected_role)
+                if not _role_kb_entry:
+                    # Fall back to job description hours section
+                    _role_desc_full = role_info.get('description', '')
+                    _hours_idx = _role_desc_full.lower().find('hours')
+                    if _hours_idx != -1:
+                        _role_kb_entry = _role_desc_full[max(0, _hours_idx - 30):_hours_idx + 600].strip()
+                    else:
+                        _role_kb_entry = "No specific hours defined — use standard weekday business hours (Mon–Fri, 8 AM–5 PM)."
 
                 role_specific_guidance = ""
                 if "Resident Director" in selected_role or "Apt RD" in selected_role or "RD" in selected_role:
@@ -1774,12 +1798,12 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
 
                 **⛔ MANDATORY SCHEDULE CONSTRAINT — THIS OVERRIDES EVERYTHING ELSE:**
                 The role being assigned is: **{selected_role}**
-                The hours and schedule extracted directly from this role's job description are:
+                The HRL Knowledge Base states the following about this role:
                 ---
-                {_role_schedule_text}
+                {_role_kb_entry}
                 ---
                 You MUST set the scenario ONLY during a day and time when this role is scheduled to work per the above.
-                DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the hours above explicitly state they work those times.
+                DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the entry above explicitly states they work those times.
 
                 **Critical Requirements:**
                 1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
