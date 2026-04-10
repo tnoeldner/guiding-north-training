@@ -1083,7 +1083,153 @@ HRL_KNOWLEDGE_BASE = load_knowledge_base()
 UND_WEBSITE_KB = load_website_kb()
 HOUSING_BEST_PRACTICES = load_best_practices()
 
-def extract_text_from_pdf(pdf_file):
+def build_scenario_prompt(role_name, difficulty, topic="",
+                          last_scenario_text="None", building_history_text="None"):
+    """Single source of truth for all scenario generation prompts.
+    Used by both the self-practice generator and the supervisor assign flow."""
+    role_info = STAFF_ROLES.get(role_name, {})
+
+    # Resolve role KB entry (schedule + location constraints)
+    _rke = get_role_kb_entry(role_name)
+    if not _rke:
+        _desc = role_info.get('description', '')
+        _hi = _desc.lower().find('hours')
+        if _hi != -1:
+            _rke = _desc[max(0, _hi - 30):_hi + 600].strip()
+        else:
+            _rke = "No specific hours defined — use standard weekday business hours (Mon–Fri, 8 AM–5 PM)."
+
+    # Role-specific guidance block (RD/APT RD variants)
+    role_specific_guidance = ""
+    if "Resident Director" in role_name or "RD" in role_name:
+        role_specific_guidance = """
+
+    **Role-Specific Scenario Focus:**
+    As a Resident Director, you handle a wide range of residential life issues. Ensure variety across these common scenario types:
+    - Student conduct and policy enforcement situations
+    - Roommate mediation and conflict resolution
+    - Emergency and safety concerns
+    - Mental health and wellness referrals
+    - Community development and staff supervision
+    - Residential community issues and building management
+    - Student concerns and complaints
+    - Staffing and RA coordination challenges
+
+    Vary between these types systematically to build comprehensive competency.
+    """
+
+    sop_query = f"{role_name} {topic}".strip()
+
+    return f"""
+    **System Grounding:** You are an expert training assistant for the University of North Dakota Housing & Residence Life, specializing in the Guiding NORTH Framework. Your primary tool is the following document:
+
+    ---
+    {GUIDING_NORTH_FRAMEWORK}
+    ---
+
+    **Operational Knowledge Base (protocols & policies — authoritative source for all fees, hours, locations, procedures):**
+    ---
+    {load_knowledge_base()}
+    {retrieve_sop_context(sop_query)}
+    {get_fees_block()}
+    ---
+
+    **UND Housing Website Notes (public info & links):**
+    ---
+    {UND_WEBSITE_KB}
+    ---
+
+    **Best Practices (on-campus housing):**
+    ---
+    {HOUSING_BEST_PRACTICES}
+    ---
+
+    **Organizational Structure:**
+    ---
+    The '{role_name}' reports to: {role_info.get('supervisor', 'Not specified')}
+
+    Organizational Chart Reporting Relationships:
+    {chr(10).join([f"- {edge['source']} reports to {edge['target']}" for edge in ORG_CHART.get('edges', [])])}
+    ---
+
+    **Role Description/Job Details:**
+    ---
+    {role_info.get('description', 'Not provided.')}
+    ---
+    {role_specific_guidance}
+
+    **Task:** Generate a single, detailed, and realistic scenario for a '{role_name}'. The difficulty of this scenario should be '{difficulty}'.
+    {"**Topic Focus:** " + topic if topic else ""}
+
+    **Difficulty guidance:**
+    - Standard: A straightforward, single-issue situation a new staff member could handle with basic training.
+    - Challenging: A more nuanced situation involving multiple considerations, competing priorities, or an escalating student.
+    - Complex: A high-stakes, multi-faceted situation requiring advanced judgment, policy knowledge, and de-escalation skills.
+
+    **Source Priority for Scenario Content:**
+    - Draw directly from the **Operational Knowledge Base** and **Relevant SOP Procedures** above when crafting the situation — use actual procedures, workflows, policies, and constraints described in those documents to make the scenario grounded in real HRL operations.
+    - Use the **Guiding NORTH Framework** to ensure the scenario tests one or more of the five pillars (N, O, R, T, H).
+    - Use the **Role Description** to ensure the scenario is realistic for what this staff member would actually encounter.
+
+    **⛔ MANDATORY SCHEDULE & LOCATION CONSTRAINT — THIS OVERRIDES EVERYTHING ELSE:**
+    The role being assigned is: **{role_name}**
+    The HRL Knowledge Base states the following about this role:
+    ---
+    {_rke}
+    ---
+    RULE 1 — TIME: You MUST set the scenario ONLY during a day and time when this role is scheduled to work per the above.
+    DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the entry above explicitly states they work those times.
+    RULE 2 — LOCATION: You MUST place the staff member ONLY at the work location specified above.
+    If the KB entry says "Housing Office or Wilkerson Service Desk ONLY," the scenario MUST open with the staff member sitting at one of those two desks — NEVER inside a residence hall or apartment building.
+    Residents or students may COME TO the desk from any building — that is fine. But the staff member's physical location must match the Work Location above.
+    RULE 3 — INTERNAL CONSISTENCY: All policy details stated within the scenario body (hours, fees, procedures) MUST match the Operational Knowledge Base exactly. Do not invent hours, fees, or procedures.
+
+    **Critical Requirements:**
+    1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
+    2. **UND Housing Realism — Use the Knowledge Base and SOPs:**
+       - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
+       - Base all policies, fees, hours, procedures, and constraints on what is stated in the Operational Knowledge Base and SOP Procedures provided above — do NOT invent or assume details not present in those documents
+       - Reference real resources mentioned in the Knowledge Base (Wilkerson Service Center, Housing Self-Service portal, RA on Duty, etc.)
+       - Make scenarios feel like actual situations at UND Housing & Residence Life
+    3. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
+    4. **Building/Location Variety:** IMPORTANT - Do NOT repeat the same building as the previous scenario. Vary buildings across all available options:
+       - Residence Halls: McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall, Smith Hall, Johnstone Hall, University Place, Swanson Hall
+       - Apartments: Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, 3904 University Ave
+       - Each scenario should use a DIFFERENT building/location from the previous scenario to ensure comprehensive campus coverage
+    5. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
+       - Roommate mediation and conflict resolution
+       - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
+       - Mental health concerns and wellness referrals
+       - Emergency/safety situations
+       - Key and lockout issues (lost physical room key, lockout access, lock recore procedure — note: electronic access is for exterior building doors only, rooms use physical keys)
+       - Community development and RA team issues
+       - Academic or financial concerns affecting housing
+       - Bias incidents or community safety concerns
+       - Building maintenance or facility issues
+       - Housing reassignment or room change requests
+       - Policy clarification and resident concerns
+       - Staff or student complaints
+
+    **Previous Scenario Details (for diversity checking only):**
+    {last_scenario_text}
+
+    **Recent Building Locations Used (avoid repeating these):**
+    {building_history_text}
+
+    **CRITICAL - Building Selection Instructions:**
+    You MUST select a building/location that has NOT been used in recent scenarios. The scenario MUST mention the specific building name (e.g., "In McVey Hall," "At Berkeley Drive Apartments," etc.). Each new scenario must use a different building to ensure comprehensive coverage of all UND Housing locations.
+
+    The scenario should be a full, detailed paragraph that is realistic and something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework. Include the student's name, specific details, and contextual information to make it engaging and realistic.
+
+    Format:
+    SCENARIO TITLE: [Realistic, specific title]
+    SITUATION: [Detailed scenario with all relevant context included — mention specific building, time, fees, policies, student names if applicable]
+    YOUR TASK: [What the {role_name} should do to handle this situation]
+
+    **IMPORTANT:** Do NOT include any concluding sentence that explains the scenario or explains why it might be challenging. Present only the scenario and task without any concluding commentary.
+    """
+
+
     """Extracts text from an uploaded PDF file."""
     try:
         pdf_reader = PdfReader(io.BytesIO(pdf_file.read()))
@@ -1724,134 +1870,13 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 st.session_state.building_history = []
         if st.button("🎲 Generate New Scenario", key="generate_scenario_button"):
             with st.spinner("Generating a new scenario..."):
-                role_info = STAFF_ROLES.get(selected_role, {})
                 last_scenario_text = st.session_state.scenario.strip() if st.session_state.scenario else "None"
-                # Extract role schedule/constraints from the HRL Knowledge Base (authoritative source)
-                _role_kb_entry = get_role_kb_entry(selected_role)
-                if not _role_kb_entry:
-                    # Fall back to job description hours section
-                    _role_desc_full = role_info.get('description', '')
-                    _hours_idx = _role_desc_full.lower().find('hours')
-                    if _hours_idx != -1:
-                        _role_kb_entry = _role_desc_full[max(0, _hours_idx - 30):_hours_idx + 600].strip()
-                    else:
-                        _role_kb_entry = "No specific hours defined — use standard weekday business hours (Mon–Fri, 8 AM–5 PM)."
-
-                role_specific_guidance = ""
-                if "Resident Director" in selected_role or "Apt RD" in selected_role or "RD" in selected_role:
-                    role_specific_guidance = """
-                    
-                    **Role-Specific Scenario Focus:**
-                    As a Resident Director, you handle a wide range of residential life issues. Ensure variety across these common scenario types:
-                    - Student conduct and policy enforcement situations
-                    - Roommate mediation and conflict resolution
-                    - Emergency and safety concerns
-                    - Mental health and wellness referrals
-                    - Community development and staff supervision
-                    - Residential community issues and building management
-                    - Student concerns and complaints
-                    - Staffing and RA coordination challenges
-                    
-                    Vary between these types systematically to build comprehensive competency.
-                    """
-                
-                prompt = f"""
-                **System Grounding:** You are an expert training assistant for the University of North Dakota Housing & Residence Life, specializing in the Guiding NORTH Framework. Your primary tool is the following document:
-
-                ---
-                {GUIDING_NORTH_FRAMEWORK}
-                ---
-
-                **Operational Knowledge Base (protocols & policies):**
-                ---
-                {load_knowledge_base()}
-                {retrieve_sop_context(f'{selected_role} {selected_topic}')}
-                {get_fees_block()}
-                ---
-
-                **UND Housing Website Notes (public info & links):**
-                ---
-                {UND_WEBSITE_KB}
-                ---
-
-                **Best Practices (on‑campus housing):**
-                ---
-                {HOUSING_BEST_PRACTICES}
-                ---
-
-                **Organizational Structure:**
-                ---
-                The '{selected_role}' reports to: {role_info.get('supervisor', 'Not specified')}
-                
-                Organizational Chart Reporting Relationships:
-                {chr(10).join([f"- {edge['source']} reports to {edge['target']}" for edge in ORG_CHART.get('edges', [])])}
-                ---
-
-                **Role Description/Job Details:**
-                ---
-                {role_info.get('description', 'Not provided.')}
-                ---
-                {role_specific_guidance}
-
-                **Task:** Generate a single, detailed, and realistic scenario for a '{selected_role}'. The difficulty of this scenario should be '{difficulty}'.
-
-                **Source Priority for Scenario Content:**
-                - Draw directly from the **Operational Knowledge Base** and **Relevant SOP Procedures** above when crafting the situation — use actual procedures, workflows, policies, and constraints described in those documents to make the scenario grounded in real HRL operations.
-                - Use the **Guiding NORTH Framework** to ensure the scenario tests one or more of the five pillars (N, O, R, T, H).
-                - Use the **Role Description** to ensure the scenario is realistic for what this staff member would actually encounter.
-
-                **⛔ MANDATORY SCHEDULE & LOCATION CONSTRAINT — THIS OVERRIDES EVERYTHING ELSE:**
-                The role being assigned is: **{selected_role}**
-                The HRL Knowledge Base states the following about this role:
-                ---
-                {_role_kb_entry}
-                ---
-                RULE 1 — TIME: You MUST set the scenario ONLY during a day and time when this role is scheduled to work per the above.
-                DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the entry above explicitly states they work those times.
-                RULE 2 — LOCATION: You MUST place the staff member ONLY at the work location specified above.
-                If the KB entry says "Housing Office or Wilkerson Service Desk ONLY," the scenario MUST open with the staff member sitting at one of those two desks — NEVER inside a residence hall or apartment building.
-                Residents or students may COME TO the desk from any building — that is fine. But the staff member's physical location must match the Work Location above.
-                RULE 3 — INTERNAL CONSISTENCY: All policy details stated within the scenario body (hours, fees, procedures) MUST match the Operational Knowledge Base exactly. Do not invent hours, fees, or procedures.
-
-                **Critical Requirements:**
-                1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
-                2. **UND Housing Realism — Use the Knowledge Base and SOPs:**
-                   - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
-                   - Base all policies, fees, hours, procedures, and constraints on what is stated in the Operational Knowledge Base and SOP Procedures provided above — do NOT invent or assume details not present in those documents
-                   - Reference real resources mentioned in the Knowledge Base (Wilkerson Service Center, Housing Self-Service portal, RA on Duty, etc.)
-                   - Make scenarios feel like actual situations at UND Housing & Residence Life
-                3. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
-                4. **Building/Location Variety:** IMPORTANT - Do NOT repeat the same building as the previous scenario. Vary buildings across all available options:
-                   - Residence Halls: McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall, Smith Hall, Johnstone Hall, University Place, Swanson Hall
-                   - Apartments: Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, 3904 University Ave
-                   - Each scenario should use a DIFFERENT building/location from the previous scenario to ensure comprehensive campus coverage
-                5. **Scenario Type:** Pick from these areas (rotate through them, avoiding the previous type):
-                   - Roommate mediation and conflict resolution
-                   - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
-                   - Mental health concerns and wellness referrals
-                   - Emergency/safety situations
-                   - Key and lockout issues (lost physical room key, lockout access, lock recore procedure — note: electronic access is for exterior building doors only, rooms use physical keys)
-                   - Community development and RA team issues
-                   - Academic or financial concerns affecting housing
-                   - Bias incidents or community safety concerns
-                   - Building maintenance or facility issues
-                   - Housing reassignment or room change requests
-                   - Policy clarification and resident concerns
-                   - Staff or student complaints
-
-                **Previous Scenario Details (for diversity checking only):**
-                {last_scenario_text}
-
-                **Recent Building Locations Used (avoid repeating these):**
-                {building_history_text}
-
-                **CRITICAL - Building Selection Instructions:**
-                You MUST select a building/location that has NOT been used in recent scenarios. The scenario MUST mention the specific building name (e.g., "In McVey Hall," "At Berkeley Drive Apartments," etc.). Each new scenario must use a different building to ensure comprehensive coverage of all UND Housing locations.
-
-                The scenario should be a full, detailed paragraph that is realistic and something this person would likely encounter in their role at UND Housing. It must be designed to test their proficiency in one or more pillars of the Guiding NORTH framework. Include the student's name, specific details, and contextual information to make it engaging and realistic.
-                
-                **IMPORTANT:** Do NOT include any concluding sentence that explains the scenario or explains why it might be challenging. Present only the scenario itself.
-                """
+                prompt = build_scenario_prompt(
+                    role_name=selected_role,
+                    difficulty=difficulty,
+                    last_scenario_text=last_scenario_text,
+                    building_history_text=building_history_text
+                )
                 try:
                     response = client.models.generate_content(
                         model=st.session_state.selected_model,
@@ -2516,39 +2541,12 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                     else:
                         with st.spinner(f"Generating {selected_difficulty} {selected_topic} scenario for {len(selected_staff)} staff member(s)..."):
                             try:
-                                # Generate the scenario
-                                scenario_prompt = f"""Generate a realistic housing and residence life training scenario for the role: {selected_role}.
-
-SCENARIO REQUIREMENTS:
-Topic: {selected_topic}
-Difficulty: {selected_difficulty}
-
-Difficulty guidance:
-- Standard: A straightforward, single-issue situation a new staff member could handle with basic training.
-- Challenging: A more nuanced situation involving multiple considerations, competing priorities, or an escalating student.
-- Complex: A high-stakes, multi-faceted situation requiring advanced judgment, policy knowledge, and de-escalation skills.
-
-USE THIS AUTHENTIC UND HOUSING INFORMATION FROM THE KNOWLEDGE BASE ABOVE.
-
-The scenario should:
-- Reference real UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
-- Include authentic UND policies on quiet hours, guest limits, alcohol, lockouts, room changes, maintenance procedures
-- Use realistic fee amounts ($10/$25 lockout fees, $75 key recore, $100+ unauthorized move fine, $165 modem removal fine)
-- Reference actual housing rates or the Wilkerson Service Center
-- Include specific times, dates, and building details to make it immersive
-- Feature real student scenarios a {selected_role} would actually handle
-- Require the staff member to apply the Guiding North Framework principles
-- Be appropriate for role-playing or discussion
-- Be tailored to the responsibilities and perspective of a {selected_role}
-- Include all relevant context woven into the scenario (no separate context section)
-- Use ALL available residence halls and apartments: Vary the location across McVey Hall, West Hall, Brannon Hall, Noren Hall, Selke Hall, Smith Hall, Johnstone Hall, University Place, Swanson Hall, Berkeley Drive, Carleton Court, Hamline Square, Mt. Vernon/Williamsburg, Swanson Complex, Tulane Court, Virginia Rose, and 3904 University Ave
-
-Format:
-SCENARIO TITLE: [Realistic, specific title]
-SITUATION: [Detailed scenario with all relevant context included - mention specific building, time, fees, policies, student names if applicable]
-YOUR TASK: [What the {selected_role} should do to handle this situation]
-
-Keep the scenario concise but realistic. Present only the scenario and task without any concluding commentary."""
+                                # Use the shared scenario prompt builder (same logic as self-practice generator)
+                                scenario_prompt = build_scenario_prompt(
+                                    role_name=selected_role,
+                                    difficulty=selected_difficulty,
+                                    topic=selected_topic
+                                )
 
                                 # Call Gemini API (use configured client)
                                 client = st.session_state.get('genai_client')
