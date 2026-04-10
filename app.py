@@ -296,13 +296,57 @@ def load_framework():
         return "Framework not available."
 
 def load_knowledge_base():
-    """Loads the HRL Knowledge Base file for protocols and policies."""
+    """Loads the HRL Knowledge Base — checks DB first, falls back to file."""
+    db_pool = get_db_pool()
+    if db_pool:
+        conn = None
+        try:
+            conn = db_pool.getconn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM app_config WHERE key = 'hrl_knowledge_base'")
+                row = cur.fetchone()
+                if row and row[0]:
+                    val = row[0]
+                    # value may come back as a dict (JSONB auto-parse) or a string
+                    if isinstance(val, dict):
+                        return val.get('content', '')
+                    try:
+                        return json.loads(val).get('content', '')
+                    except Exception:
+                        return str(val)
+        except Exception:
+            pass
+        finally:
+            if conn:
+                db_pool.putconn(conn)
+    # Fall back to file
     try:
         with open(KNOWLEDGE_BASE_FILE, 'r', encoding='utf-8', errors='replace') as f:
             return f.read()
     except FileNotFoundError:
-        st.error(f"Knowledge base file not found: {KNOWLEDGE_BASE_FILE}")
         return "Knowledge base not available."
+
+def save_knowledge_base(content):
+    """Saves the HRL Knowledge Base to the database."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO app_config (key, value) VALUES ('hrl_knowledge_base', %s)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            """, (json.dumps({"content": content}),))
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Failed to save Knowledge Base: {e}")
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
 
 def load_website_kb():
     """Loads UND Housing website notes for public info and links."""
@@ -624,27 +668,22 @@ def load_exemplary_examples(limit=5):
 
 
 def sync_corrections_to_knowledge_base():
-    """Writes all supervisor-approved exemplary standards into the HRLKnowledgeBase file."""
+    """Writes all supervisor-approved exemplary standards into the HRL Knowledge Base (DB)."""
     examples = load_exemplary_examples(limit=100)
     START_MARKER = "===BEGIN_SUPERVISOR_EXEMPLARY_STANDARDS==="
     END_MARKER = "===END_SUPERVISOR_EXEMPLARY_STANDARDS==="
-    try:
-        with open(KNOWLEDGE_BASE_FILE, 'r', encoding='utf-8', errors='replace') as f:
-            current_content = f.read()
-    except FileNotFoundError:
-        current_content = ""
+
+    current_content = load_knowledge_base()
+
     # Strip existing auto-generated section
     start_idx = current_content.find(START_MARKER)
     if start_idx != -1:
-        end_idx = current_content.find(END_MARKER)
-        if end_idx != -1:
-            current_content = current_content[:start_idx].rstrip()
-        else:
-            current_content = current_content[:start_idx].rstrip()
+        current_content = current_content[:start_idx].rstrip()
+
     if not examples:
-        with open(KNOWLEDGE_BASE_FILE, 'w', encoding='utf-8') as f:
-            f.write(current_content)
+        save_knowledge_base(current_content)
         return
+
     lines = [
         "",
         "",
@@ -669,8 +708,7 @@ def sync_corrections_to_knowledge_base():
         lines.append("")
     lines.append(END_MARKER)
     new_content = current_content + "\n".join(lines)
-    with open(KNOWLEDGE_BASE_FILE, 'w', encoding='utf-8') as f:
-        f.write(new_content)
+    save_knowledge_base(new_content)
 
 
 def load_config():
@@ -3405,12 +3443,14 @@ Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
                 kb_col1, kb_col2 = st.columns([1, 3])
                 with kb_col1:
                     if st.button("💾 Save Knowledge Base", key="save_kb_btn", type="primary"):
+                        if save_knowledge_base(edited_kb):
+                            st.success("✅ Knowledge Base saved to database successfully!")
+                        # Also write to file as local backup
                         try:
                             with open(KNOWLEDGE_BASE_FILE, 'w', encoding='utf-8') as f:
                                 f.write(edited_kb)
-                            st.success("✅ Knowledge Base saved successfully!")
-                        except Exception as e:
-                            st.error(f"Failed to save: {e}")
+                        except Exception:
+                            pass
                 with kb_col2:
                     st.caption("⚠️ Saving will overwrite the file. The supervisor corrections section will be re-appended on the next correction save.")
 
