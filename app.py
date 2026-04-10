@@ -109,6 +109,19 @@ def init_db():
                     ADD COLUMN IF NOT EXISTS exemplary_feedback TEXT,
                     ADD COLUMN IF NOT EXISTS exemplary_refined TEXT;
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sop_chunks (
+                    id SERIAL PRIMARY KEY,
+                    doc_name VARCHAR(255) NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    heading VARCHAR(500),
+                    content TEXT NOT NULL,
+                    tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
+                );
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS sop_chunks_tsv_idx ON sop_chunks USING GIN(tsv);
+            """)
             conn.commit()
     except Exception as e:
         st.error(f"Database initialization failed: {e}")
@@ -453,6 +466,110 @@ def delete_result(result_id):
     finally:
         if conn:
             db_pool.putconn(conn)
+
+def chunk_text(text, chunk_size=500, overlap=50):
+    """Split text into overlapping word-based chunks."""
+    words = text.split()
+    chunks = []
+    i = 0
+    while i < len(words):
+        chunk = words[i:i + chunk_size]
+        chunks.append(" ".join(chunk))
+        if i + chunk_size >= len(words):
+            break
+        i += chunk_size - overlap
+    return chunks
+
+def store_sop_chunks(doc_name, chunks, headings=None):
+    """Delete existing doc then insert new chunks. headings is optional list matching chunks."""
+    db_pool = get_db_pool()
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sop_chunks WHERE doc_name = %s", (doc_name,))
+            for idx, content in enumerate(chunks):
+                heading = (headings[idx] if headings and idx < len(headings) else None)
+                cur.execute(
+                    "INSERT INTO sop_chunks (doc_name, chunk_index, heading, content) VALUES (%s, %s, %s, %s)",
+                    (doc_name, idx, heading, content)
+                )
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error storing SOP chunks: {e}")
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def search_sop_chunks(query_text, limit=5):
+    """Full-text search returning top matching chunk strings."""
+    if not query_text or not query_text.strip():
+        return []
+    db_pool = get_db_pool()
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT content FROM sop_chunks
+                WHERE tsv @@ plainto_tsquery('english', %s)
+                ORDER BY ts_rank(tsv, plainto_tsquery('english', %s)) DESC
+                LIMIT %s
+            """, (query_text, query_text, limit))
+            rows = cur.fetchall()
+            return [r[0] for r in rows]
+    except Exception:
+        return []
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def list_sop_documents():
+    """Return list of dicts with doc_name, chunk_count, uploaded_at."""
+    db_pool = get_db_pool()
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT doc_name, COUNT(*) AS chunk_count, MIN(id) AS first_id
+                FROM sop_chunks
+                GROUP BY doc_name
+                ORDER BY first_id ASC
+            """)
+            rows = cur.fetchall()
+            return [{"doc_name": r[0], "chunk_count": r[1]} for r in rows]
+    except Exception:
+        return []
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def delete_sop_document(doc_name):
+    db_pool = get_db_pool()
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sop_chunks WHERE doc_name = %s", (doc_name,))
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error deleting SOP document: {e}")
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def retrieve_sop_context(query_text):
+    """Return a formatted block of relevant SOP chunks for prompt injection, or empty string."""
+    chunks = search_sop_chunks(query_text, limit=5)
+    if not chunks:
+        return ""
+    joined = "\n\n---\n\n".join(chunks)
+    return f"\n\n===RELEVANT SOP PROCEDURES===\n{joined}\n===END SOP PROCEDURES===\n"
 
 def load_exemplary_examples(limit=5):
     """Loads supervisor-refined exemplary responses for few-shot prompting."""
@@ -1038,6 +1155,7 @@ if _token_param:
 
 **Operational Knowledge Base:**
 {_token_kb}
+{retrieve_sop_context(f"{assignment.get('assigned_role','')} {assignment.get('scenario','')[:300]}")}
 
 **Context:**
 - Role: {assignment.get('assigned_role', 'Staff')}
@@ -1547,6 +1665,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 **Operational Knowledge Base (protocols & policies):**
                 ---
                 {HRL_KNOWLEDGE_BASE}
+                {retrieve_sop_context(f'{selected_role} {selected_topic}')}
                 ---
 
                 **UND Housing Website Notes (public info & links):**
@@ -1668,6 +1787,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                         ---
                         {load_knowledge_base()}
+                        {retrieve_sop_context(f'{selected_role} {st.session_state.get("scenario", "")[:300]}')}
                         ---
 
                         **UND Housing Website Notes (public info & links):**
@@ -1876,6 +1996,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                             ---
                             {load_knowledge_base()}
+                            {retrieve_sop_context(f'{call_role} {call_transcript[:300]}')}
                             ---
 
                             **UND Housing Website Notes (public info & links):**
@@ -2043,6 +2164,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                                     ---
                                     {load_knowledge_base()}
+                                    {retrieve_sop_context(call_role)}
                                     ---
 
                                     **UND Housing Website Notes (public info & links):**
@@ -3134,6 +3256,77 @@ Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
                     st.success("✅ App URL saved!")
                 else:
                     st.error("Failed to save App URL.")
+
+            st.divider()
+
+            # SOP Manual Upload
+            st.subheader("📋 SOP Manual Upload")
+            st.caption("Upload PDF copies of your Standard Operating Procedures. The AI will retrieve relevant sections when generating evaluations.")
+
+            try:
+                import pypdf
+                _pypdf_available = True
+            except ImportError:
+                try:
+                    import PyPDF2 as _pypdf_compat
+                    _pypdf_available = False
+                except ImportError:
+                    _pypdf_available = None
+
+            sop_docs = list_sop_documents()
+            if sop_docs:
+                st.markdown("**Uploaded Documents:**")
+                for _doc in sop_docs:
+                    _col1, _col2 = st.columns([4, 1])
+                    with _col1:
+                        st.markdown(f"📄 **{_doc['doc_name']}** — {_doc['chunk_count']} chunks")
+                    with _col2:
+                        if st.button("🗑️ Delete", key=f"del_sop_{_doc['doc_name']}"):
+                            if delete_sop_document(_doc['doc_name']):
+                                st.success(f"Deleted {_doc['doc_name']}")
+                                st.rerun()
+            else:
+                st.info("No SOP documents uploaded yet.")
+
+            st.markdown("**Upload New Document:**")
+            _sop_upload = st.file_uploader(
+                "Choose PDF file(s)",
+                type=["pdf"],
+                accept_multiple_files=True,
+                key="sop_pdf_uploader"
+            )
+            if _sop_upload:
+                if st.button("⬆️ Process & Store SOP", key="process_sop_btn"):
+                    for _uploaded_pdf in _sop_upload:
+                        with st.spinner(f"Processing {_uploaded_pdf.name}..."):
+                            try:
+                                _pdf_text_parts = []
+                                if _pypdf_available:
+                                    import pypdf as _pypdf_mod
+                                    _reader = _pypdf_mod.PdfReader(_uploaded_pdf)
+                                    for _page in _reader.pages:
+                                        _page_text = _page.extract_text()
+                                        if _page_text:
+                                            _pdf_text_parts.append(_page_text)
+                                elif _pypdf_available is False:
+                                    import PyPDF2 as _pypdf2_mod
+                                    _reader = _pypdf2_mod.PdfReader(_uploaded_pdf)
+                                    for _page in _reader.pages:
+                                        _page_text = _page.extract_text()
+                                        if _page_text:
+                                            _pdf_text_parts.append(_page_text)
+                                else:
+                                    st.error("pypdf or PyPDF2 is required. Run: pip install pypdf")
+                                    continue
+
+                                _full_text = "\n\n".join(_pdf_text_parts)
+                                _chunks = chunk_text(_full_text, chunk_size=500, overlap=50)
+                                if store_sop_chunks(_uploaded_pdf.name, _chunks):
+                                    st.success(f"✅ Stored **{_uploaded_pdf.name}** — {len(_chunks)} chunks indexed for search")
+                                else:
+                                    st.error(f"Failed to store {_uploaded_pdf.name}")
+                            except Exception as _sop_err:
+                                st.error(f"Error processing {_uploaded_pdf.name}: {_sop_err}")
 
             st.divider()
 
