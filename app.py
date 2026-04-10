@@ -1785,14 +1785,18 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 - Use the **Guiding NORTH Framework** to ensure the scenario tests one or more of the five pillars (N, O, R, T, H).
                 - Use the **Role Description** to ensure the scenario is realistic for what this staff member would actually encounter.
 
-                **⛔ MANDATORY SCHEDULE CONSTRAINT — THIS OVERRIDES EVERYTHING ELSE:**
+                **⛔ MANDATORY SCHEDULE & LOCATION CONSTRAINT — THIS OVERRIDES EVERYTHING ELSE:**
                 The role being assigned is: **{selected_role}**
                 The HRL Knowledge Base states the following about this role:
                 ---
                 {_role_kb_entry}
                 ---
-                You MUST set the scenario ONLY during a day and time when this role is scheduled to work per the above.
+                RULE 1 — TIME: You MUST set the scenario ONLY during a day and time when this role is scheduled to work per the above.
                 DO NOT place this staff member in a scenario during evenings, nights, or weekends unless the entry above explicitly states they work those times.
+                RULE 2 — LOCATION: You MUST place the staff member ONLY at the work location specified above.
+                If the KB entry says "Housing Office or Wilkerson Service Desk ONLY," the scenario MUST open with the staff member sitting at one of those two desks — NEVER inside a residence hall or apartment building.
+                Residents or students may COME TO the desk from any building — that is fine. But the staff member's physical location must match the Work Location above.
+                RULE 3 — INTERNAL CONSISTENCY: All policy details stated within the scenario body (hours, fees, procedures) MUST match the Operational Knowledge Base exactly. Do not invent hours, fees, or procedures.
 
                 **Critical Requirements:**
                 1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
@@ -1811,7 +1815,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                    - Student conduct violations (noise, guests, quiet hours, alcohol/substance concerns)
                    - Mental health concerns and wellness referrals
                    - Emergency/safety situations
-                   - Key and electronic door access issues (lockouts, card access failures, lost keys)
+                   - Key and lockout issues (lost physical room key, lockout access, lock recore procedure — note: electronic access is for exterior building doors only, rooms use physical keys)
                    - Community development and RA team issues
                    - Academic or financial concerns affecting housing
                    - Bias incidents or community safety concerns
