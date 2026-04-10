@@ -139,7 +139,11 @@ Cleaning: Residents must clean oven, fridge, bathroom, and floors to avoid clean
 
 5. Staff Role Specifics (For AI Persona)
 
-Front Desk: Can handle lockouts, general questions, mail. Cannot approve room changes or waive fees.
+Front Desk Student Assistant:
+- Hours: Monday – Friday, 8:00 AM – 5:00 PM ONLY. Front Desk Student Assistants do NOT work evenings, weekends, or holidays.
+- Can handle lockouts, general questions, and mail during staffed hours.
+- Cannot approve room changes or waive fees.
+- After-hours and weekend lockouts/issues must be directed to the RA on Duty or Wilkerson Service Center — NOT the Front Desk, as it is unstaffed.
 
 Resident Director (RD): Handles roommate conflicts, room change requests, conduct meetings.
 

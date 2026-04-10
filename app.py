@@ -1722,15 +1722,19 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 {UND_HOUSING_CONTEXT}
                 ---
 
-                **Task:** Based *only* on the framework document provided, generate a single, detailed, and realistic scenario for a '{selected_role}'. The difficulty of this scenario should be '{difficulty}'.
-                
+                **Task:** Generate a single, detailed, and realistic scenario for a '{selected_role}'. The difficulty of this scenario should be '{difficulty}'.
+
+                **Source Priority for Scenario Content:**
+                - Draw directly from the **Operational Knowledge Base** and **Relevant SOP Procedures** above when crafting the situation — use actual procedures, workflows, policies, and constraints described in those documents to make the scenario grounded in real HRL operations.
+                - Use the **Guiding NORTH Framework** to ensure the scenario tests one or more of the five pillars (N, O, R, T, H).
+                - Use the **Role Description** and **HRL Knowledge Base hours/constraints** to ensure the scenario is realistic for what this staff member would actually encounter given their role, schedule, and responsibilities.
+
                 **Critical Requirements:**
                 1. **Student Name:** Use a diverse, realistic first name that is NOT the same as in the previous scenario. Choose from diverse names like: Alex, Jordan, Casey, Morgan, Avery, Quinn, Jamie, Riley, Taylor, Chris, Sam, Pat, Blake, Drew, Devon, or create another realistic diverse name. Ensure the name changes every time.
-                2. **UND Housing Realism:** 
+                2. **UND Housing Realism — Use the Knowledge Base and SOPs:**
                    - Reference specific UND residence halls (McVey, West, Brannon, Noren, Selke, Smith, Johnstone, University Place, Swanson) or apartments (Berkeley Drive, Carleton Court, Hamline Square, etc.)
-                   - Include real UND policies (quiet hours, guest limits, alcohol rules, lockout fees, room change procedures, maintenance protocols)
-                   - Use authentic fee amounts ($10/$25 lockout fees, $75 key recore, $100+ unauthorized move fines, $165 modem fine, $5,100-$6,180 annual hall costs, apartment rates)
-                   - Reference real resources (Wilkerson Service Center, Housing Self-Service portal, RA on Duty)
+                   - Base all policies, fees, hours, procedures, and constraints on what is stated in the Operational Knowledge Base and SOP Procedures provided above — do NOT invent or assume details not present in those documents
+                   - Reference real resources mentioned in the Knowledge Base (Wilkerson Service Center, Housing Self-Service portal, RA on Duty, etc.)
                    - Make scenarios feel like actual situations at UND Housing & Residence Life
                 3. **Variety Requirement:** Do NOT repeat the same type of scenario as the previous one. Focus on different residential life issues.
                 4. **Building/Location Variety:** IMPORTANT - Do NOT repeat the same building as the previous scenario. Vary buildings across all available options:
