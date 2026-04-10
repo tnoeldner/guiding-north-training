@@ -14,10 +14,9 @@ from streamlit_agraph import agraph, Node, Edge, Config
 from datetime import datetime
 import plotly.graph_objects as go
 from werkzeug.security import generate_password_hash, check_password_hash
+import uuid
 import psycopg2
 from psycopg2 import pool
-
-# --- App Configuration ---
 st.set_page_config(
     page_title="Guiding NORTH: HRL Training",
     page_icon="🧭",
@@ -100,7 +99,9 @@ def init_db():
                     ADD COLUMN IF NOT EXISTS ai_analysis TEXT,
                     ADD COLUMN IF NOT EXISTS supervisor_feedback TEXT,
                     ADD COLUMN IF NOT EXISTS reviewed_date TIMESTAMP WITH TIME ZONE,
-                    ADD COLUMN IF NOT EXISTS difficulty VARCHAR(50);
+                    ADD COLUMN IF NOT EXISTS difficulty VARCHAR(50),
+                    ADD COLUMN IF NOT EXISTS token VARCHAR(64),
+                    ADD COLUMN IF NOT EXISTS token_used BOOLEAN DEFAULT FALSE;
             """)
             cur.execute("""
                 ALTER TABLE results
@@ -650,13 +651,68 @@ def load_assignments():
         if conn:
             db_pool.putconn(conn)
 
-def save_assignment(email, scenario_name, supervisor_email=None, supervisor_name=None,
-                    staff_name=None, assigned_role=None, scenario_text=None, difficulty=None):
-    """Saves a new scenario assignment to the database."""
+def get_assignment_by_token(token):
+    """Looks up an assignment by its magic-link token. Returns the assignment dict or None."""
+    db_pool = get_db_pool()
+    if not db_pool or not token:
+        return None
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, email, scenario_name, status, assigned_date,
+                       supervisor_email, supervisor_name, staff_name, assigned_role,
+                       scenario_text, response, ai_analysis, difficulty, token_used
+                FROM scenario_assignments
+                WHERE token = %s
+            """, (token,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row[0], "email": row[1], "scenario_name": row[2],
+                "topic": row[2], "status": row[3],
+                "assigned_date": row[4].isoformat() if row[4] else None,
+                "supervisor_email": row[5], "supervisor_name": row[6],
+                "staff_name": row[7], "assigned_role": row[8],
+                "scenario": row[9], "scenario_text": row[9],
+                "response": row[10], "ai_analysis": row[11],
+                "difficulty": row[12], "token_used": row[13],
+            }
+    except Exception:
+        return None
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+
+def mark_token_used(assignment_id):
+    """Marks the magic-link token for an assignment as used so it cannot be resubmitted."""
     db_pool = get_db_pool()
     if not db_pool:
-        return False
+        return
     conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE scenario_assignments SET token_used = TRUE WHERE id = %s", (assignment_id,))
+            conn.commit()
+    except Exception:
+        pass
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+
+def save_assignment(email, scenario_name, supervisor_email=None, supervisor_name=None,
+                    staff_name=None, assigned_role=None, scenario_text=None, difficulty=None):
+    """Saves a new scenario assignment to the database. Returns the token string, or None on failure."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return None
+    conn = None
+    assignment_token = uuid.uuid4().hex
     try:
         conn = db_pool.getconn()
         with conn.cursor() as cur:
@@ -664,19 +720,19 @@ def save_assignment(email, scenario_name, supervisor_email=None, supervisor_name
                 """
                 INSERT INTO scenario_assignments
                     (email, scenario_name, supervisor_email, supervisor_name,
-                     staff_name, assigned_role, scenario_text, difficulty)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                     staff_name, assigned_role, scenario_text, difficulty, token)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (email, scenario_name, supervisor_email, supervisor_name,
-                 staff_name, assigned_role, scenario_text, difficulty)
+                 staff_name, assigned_role, scenario_text, difficulty, assignment_token)
             )
             conn.commit()
-            return True
+            return assignment_token
     except Exception as e:
         st.error(f"Error saving assignment to database: {e}")
         if conn:
             conn.rollback()
-        return False
+        return None
     finally:
         if conn:
             db_pool.putconn(conn)
@@ -881,6 +937,155 @@ def configure_genai(api_key):
     except Exception as e:
         st.error(f"Failed to configure Gemini API: {e}")
         return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Magic-link token page — renders standalone, no login required
+# ─────────────────────────────────────────────────────────────────────────────
+# Read token param — handle both Streamlit ≥1.30 (st.query_params dict-style)
+# and older versions (st.experimental_get_query_params returns lists)
+try:
+    _token_param = st.query_params.get("token") or ""
+except Exception:
+    try:
+        _token_param = st.experimental_get_query_params().get("token", [""])[0] or ""  # noqa
+    except Exception:
+        _token_param = ""
+
+if _token_param:
+    # Auto-configure Gemini from secrets (needed for AI evaluation on submission)
+    _api_key_for_token = st.secrets.get("gemini_api_key", "")
+    if _api_key_for_token and not st.session_state.get("api_configured"):
+        try:
+            configure_genai(_api_key_for_token)
+            st.session_state.api_configured = True
+        except Exception:
+            pass
+
+    st.markdown("## 🧭 Guiding North — Training Scenario")
+    st.divider()
+
+    # Look up the assignment
+    try:
+        assignment = get_assignment_by_token(_token_param)
+    except Exception as _e:
+        st.error(f"⚠️ Could not retrieve scenario: {_e}")
+        st.stop()
+
+    if not assignment:
+        st.error("⚠️ This link is invalid or has already been used.")
+        st.info("If you believe this is a mistake, please contact your supervisor for a new link.")
+        st.stop()
+
+    if assignment.get("token_used") or assignment.get("status") in ("completed", "reviewed"):
+        st.success("✅ You have already submitted a response for this scenario.")
+        st.info("Your supervisor will review your response and provide feedback. You can close this page.")
+        st.stop()
+
+    col_info1, col_info2, col_info3 = st.columns(3)
+    with col_info1:
+        st.markdown(f"**Assigned by:** {assignment.get('supervisor_name', 'Your Supervisor')}")
+    with col_info2:
+        st.markdown(f"**Role:** {assignment.get('assigned_role', 'N/A')}")
+    with col_info3:
+        st.markdown(f"**Topic:** {assignment.get('topic', 'N/A')}")
+        if assignment.get('difficulty'):
+            st.caption(f"Difficulty: {assignment.get('difficulty')}")
+
+    st.divider()
+    st.subheader("📋 Your Scenario")
+    st.info(assignment.get("scenario") or "Scenario text not available.")
+
+    st.divider()
+    st.subheader("✍️ Your Response")
+    st.caption("Read the scenario carefully, then write your response as if you were handling the situation in real life.")
+    token_user_response = st.text_area(
+        "Type your response here:",
+        height=300,
+        key="token_page_response",
+        placeholder="Describe how you would handle this situation, what you would say, and what steps you would take..."
+    )
+
+    if st.button("📤 Submit Response", type="primary", key="token_submit_btn"):
+        if not token_user_response.strip():
+            st.warning("Please write your response before submitting.")
+        else:
+            with st.spinner("Submitting and evaluating your response..."):
+                _token_client = st.session_state.get("genai_client")
+                _token_analysis = "Evaluation not available."
+                if _token_client:
+                    try:
+                        _token_kb = load_knowledge_base()
+                        _token_fw = load_framework()
+                        _token_eval_prompt = f"""You are evaluating a staff response using the Guiding NORTH rubric.
+
+**Framework:**
+{_token_fw}
+
+**Operational Knowledge Base:**
+{_token_kb}
+
+**Context:**
+- Role: {assignment.get('assigned_role', 'Staff')}
+- Scenario: {assignment.get('scenario', '')}
+- Staff Response: {token_user_response}
+
+Evaluate the response using the Guiding NORTH rubric. Provide:
+1. An Overall Score (1–4)
+2. A rating and justification for each pillar (N, O, R, T, H)
+3. Specific suggestions for improvement
+4. A full Exemplary Response Example showing an ideal response
+
+**Output Format:**
+OVERALL_SCORE: [1-4]
+
+**Overall Score:** [1-4]
+
+**N - Navigate Needs:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [justification]
+
+**O - Own the Outcome:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [justification]
+
+**R - Respond Respectfully:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [justification]
+
+**T - Timely & Truthful:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [justification]
+
+**H - Help Proactively:**
+- **Rating:** [Needs Development | Proficient | Exemplary]
+- **Justification:** [justification]
+
+**Suggestions for Improvement:**
+[suggestions]
+
+**Exemplary Response Example:**
+[full exemplary response]"""
+                        _token_result = _token_client.models.generate_content(
+                            model="models/gemini-1.5-flash",
+                            contents=_token_eval_prompt,
+                            config=types.GenerateContentConfig(temperature=0.5, max_output_tokens=8000)
+                        )
+                        _token_analysis = _token_result.text if _token_result.text else "Evaluation not available."
+                    except Exception:
+                        pass
+
+                if save_assignment_response(assignment["id"], token_user_response, _token_analysis):
+                    mark_token_used(assignment["id"])
+                    st.success("✅ Your response has been submitted successfully!")
+                    st.balloons()
+                    st.info("Your supervisor will review your response and provide feedback. You can close this page.")
+                else:
+                    st.error("There was a problem submitting your response. Please try again or contact your supervisor.")
+    # Always stop here — never render the normal app sidebar/content
+    st.stop()
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 # --- UI: Sidebar ---
 with st.sidebar:
@@ -2120,11 +2325,13 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                                     flags=re.IGNORECASE | re.DOTALL
                                 )
                                 
-                                # Save the assignment
+                                # Save the assignment and collect tokens for link display
                                 all_users_db = load_users()
+                                _assign_app_url = load_config().get("app_url", "").rstrip("/")
+                                _assign_links = []
                                 for staff_email in selected_staff:
                                     user_data = all_users_db.get(staff_email, {})
-                                    save_assignment(
+                                    _token = save_assignment(
                                         email=staff_email,
                                         scenario_name=selected_topic,
                                         supervisor_email=st.session_state.get("email"),
@@ -2134,9 +2341,26 @@ Keep the scenario concise but realistic. Present only the scenario and task with
                                         scenario_text=generated_scenario,
                                         difficulty=selected_difficulty
                                     )
-                                
+                                    if _token:
+                                        _staff_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or staff_email
+                                        if _assign_app_url:
+                                            _link = f"{_assign_app_url}/?token={_token}"
+                                        else:
+                                            _link = f"?token={_token}"
+                                        _assign_links.append((_staff_name, staff_email, _link))
+
                                 st.success(f"✅ Scenario assigned to {len(selected_staff)} staff member(s)!")
-                                st.info("They will see the scenario in their \"Assigned Scenarios\" section.")
+
+                                if _assign_links:
+                                    st.subheader("🔗 Shareable Links")
+                                    st.caption("Send these links directly to each staff member. They can complete the scenario without logging in.")
+                                    if not _assign_app_url:
+                                        st.warning("⚠️ App URL not configured — links show only the token portion. Go to **Configuration → App URL** to set your full app address.")
+                                    for _name, _email, _link in _assign_links:
+                                        st.markdown(f"**{_name}** ({_email})")
+                                        st.code(_link, language=None)
+                                else:
+                                    st.info("They will see the scenario in their \"Assigned Scenarios\" section.")
                                     
                             except Exception as e:
                                 st.error(f"Error generating scenario: {e}")
@@ -2877,6 +3101,23 @@ Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
                             "Admin": user.get('is_admin', False),
                             "Account Created": "N/A"  # Could add timestamp if tracked
                         })
+
+            st.divider()
+
+            # App URL Setting
+            st.subheader("🔗 App URL (for Shareable Links)")
+            st.caption("Set the public URL of this app so shareable scenario links work correctly. Example: https://yourapp.streamlit.app")
+            _current_app_url = load_config().get("app_url", "")
+            _new_app_url = st.text_input("App Base URL:", value=_current_app_url, placeholder="https://yourapp.streamlit.app", key="app_url_input")
+            if st.button("💾 Save App URL", key="save_app_url_btn"):
+                _cfg = load_config()
+                _cfg["app_url"] = _new_app_url.strip().rstrip("/")
+                if save_config(_cfg):
+                    st.success("✅ App URL saved!")
+                else:
+                    st.error("Failed to save App URL.")
+
+            st.divider()
 
             # Knowledge Base Editor
             st.divider()
