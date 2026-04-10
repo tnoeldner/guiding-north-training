@@ -563,6 +563,24 @@ def delete_sop_document(doc_name):
         if conn:
             db_pool.putconn(conn)
 
+def get_sop_chunks_for_doc(doc_name):
+    """Return all chunks for a specific document ordered by chunk_index."""
+    db_pool = get_db_pool()
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT chunk_index, content FROM sop_chunks WHERE doc_name = %s ORDER BY chunk_index ASC",
+                (doc_name,)
+            )
+            return cur.fetchall()
+    except Exception:
+        return []
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
 def retrieve_sop_context(query_text):
     """Return a formatted block of relevant SOP chunks for prompt injection, or empty string."""
     chunks = search_sop_chunks(query_text, limit=5)
@@ -3277,14 +3295,36 @@ Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
             if sop_docs:
                 st.markdown("**Uploaded Documents:**")
                 for _doc in sop_docs:
-                    _col1, _col2 = st.columns([4, 1])
+                    _col1, _col2, _col3 = st.columns([4, 1, 1])
                     with _col1:
                         st.markdown(f"📄 **{_doc['doc_name']}** — {_doc['chunk_count']} chunks")
                     with _col2:
+                        _view_key = f"view_sop_{_doc['doc_name']}"
+                        if st.button("👁️ View", key=_view_key):
+                            st.session_state[f"show_chunks_{_doc['doc_name']}"] = not st.session_state.get(f"show_chunks_{_doc['doc_name']}", False)
+                    with _col3:
                         if st.button("🗑️ Delete", key=f"del_sop_{_doc['doc_name']}"):
                             if delete_sop_document(_doc['doc_name']):
                                 st.success(f"Deleted {_doc['doc_name']}")
                                 st.rerun()
+                    if st.session_state.get(f"show_chunks_{_doc['doc_name']}", False):
+                        with st.expander(f"Chunks — {_doc['doc_name']}", expanded=True):
+                            _chunks_data = get_sop_chunks_for_doc(_doc['doc_name'])
+                            _search_filter = st.text_input(
+                                "Filter chunks (text search):",
+                                key=f"chunk_filter_{_doc['doc_name']}",
+                                placeholder="Type to filter..."
+                            )
+                            _shown = 0
+                            for _cidx, _ctext in _chunks_data:
+                                if _search_filter and _search_filter.lower() not in _ctext.lower():
+                                    continue
+                                st.markdown(f"**Chunk {_cidx}**")
+                                st.text(_ctext[:800] + ("..." if len(_ctext) > 800 else ""))
+                                st.divider()
+                                _shown += 1
+                            if _shown == 0:
+                                st.info("No chunks match that filter.")
             else:
                 st.info("No SOP documents uploaded yet.")
 
