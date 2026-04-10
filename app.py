@@ -640,26 +640,42 @@ def retrieve_sop_context(query_text):
         f"{joined}\n===END SOP PROCEDURES===\n"
     )
 
-def get_role_kb_entry(role_name):
-    """Extract the entry for a specific role from the HRL Knowledge Base.
-    Searches for the role name and returns text until the next role or section heading."""
+def get_fees_block():
+    """Extract the authoritative fees block from the HRL Knowledge Base."""
     kb = load_knowledge_base()
-    # Find the role name in the KB (case-insensitive)
-    idx = kb.lower().find(role_name.lower())
-    if idx == -1:
-        # Try partial match on first significant word
-        first_word = role_name.split()[0].lower()
-        idx = kb.lower().find(first_word)
-    if idx == -1:
+    start_marker = "===FEES_START==="
+    end_marker = "===FEES_END==="
+    start_idx = kb.find(start_marker)
+    if start_idx == -1:
         return ""
-    # Extract from the role name forward, up to ~1000 chars or the next heading/role
-    snippet = kb[idx:idx + 1000]
-    # Truncate at the next blank-line-preceded capital line (new section) after 100 chars
-    import re
-    cutoff = re.search(r'\n\n[A-Z][^\n]{3,}:', snippet[100:])
-    if cutoff:
-        snippet = snippet[:100 + cutoff.start()]
-    return snippet.strip()
+    content_start = kb.find("\n", start_idx) + 1
+    end_idx = kb.find(end_marker, content_start)
+    if end_idx == -1:
+        return kb[content_start:content_start + 800].strip()
+    content = kb[content_start:end_idx].strip()
+    return (
+        f"\n\n===AUTHORITATIVE FEE SCHEDULE===\n"
+        f"(Use ONLY these exact amounts when referencing any fees. Do not use any other values.)\n"
+        f"{content}\n===END FEE SCHEDULE===\n"
+    )
+
+def get_role_kb_entry(role_name):
+    """Extract the entry for a specific role from the HRL Knowledge Base using explicit markers."""
+    kb = load_knowledge_base()
+    start_marker = f"===ROLE_START: {role_name}==="
+    end_marker = "===ROLE_END==="
+    start_idx = kb.find(start_marker)
+    if start_idx == -1:
+        # Try case-insensitive fallback
+        lower_kb = kb.lower()
+        start_idx = lower_kb.find(f"===role_start: {role_name.lower()}===")
+    if start_idx == -1:
+        return ""
+    content_start = kb.find("\n", start_idx) + 1
+    end_idx = kb.find(end_marker, content_start)
+    if end_idx == -1:
+        return kb[content_start:content_start + 1200].strip()
+    return kb[content_start:end_idx].strip()
 
 def load_exemplary_examples(limit=5):
     """Loads supervisor-refined exemplary responses for few-shot prompting."""
@@ -1239,7 +1255,7 @@ if _token_param:
 
 **Operational Knowledge Base:**
 {_token_kb}
-{retrieve_sop_context(f"{assignment.get('assigned_role','')} {assignment.get('scenario','')[:300]}")}
+{retrieve_sop_context(f"{assignment.get('assigned_role','')} {assignment.get('scenario','')[:300]}")}\n{get_fees_block()}
 
 **Context:**
 - Role: {assignment.get('assigned_role', 'Staff')}
@@ -1758,6 +1774,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 ---
                 {load_knowledge_base()}
                 {retrieve_sop_context(f'{selected_role} {selected_topic}')}
+                {get_fees_block()}
                 ---
 
                 **UND Housing Website Notes (public info & links):**
@@ -1893,6 +1910,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         ---
                         {load_knowledge_base()}
                         {retrieve_sop_context(f'{selected_role} {st.session_state.get("scenario", "")[:300]}')}
+                        {get_fees_block()}
                         ---
 
                         **UND Housing Website Notes (public info & links):**
@@ -2102,6 +2120,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             ---
                             {load_knowledge_base()}
                             {retrieve_sop_context(f'{call_role} {call_transcript[:300]}')}
+                            {get_fees_block()}
                             ---
 
                             **UND Housing Website Notes (public info & links):**
@@ -2270,6 +2289,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                     ---
                                     {load_knowledge_base()}
                                     {retrieve_sop_context(call_role)}
+                                    {get_fees_block()}
                                     ---
 
                                     **UND Housing Website Notes (public info & links):**
