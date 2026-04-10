@@ -504,7 +504,7 @@ def store_sop_chunks(doc_name, chunks, headings=None):
             db_pool.putconn(conn)
 
 def search_sop_chunks(query_text, limit=5):
-    """Full-text search returning top matching chunk strings."""
+    """Full-text search returning list of (doc_name, chunk_index, content) tuples."""
     if not query_text or not query_text.strip():
         return []
     db_pool = get_db_pool()
@@ -513,13 +513,12 @@ def search_sop_chunks(query_text, limit=5):
         conn = db_pool.getconn()
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT content FROM sop_chunks
+                SELECT doc_name, chunk_index, content FROM sop_chunks
                 WHERE tsv @@ plainto_tsquery('english', %s)
                 ORDER BY ts_rank(tsv, plainto_tsquery('english', %s)) DESC
                 LIMIT %s
             """, (query_text, query_text, limit))
-            rows = cur.fetchall()
-            return [r[0] for r in rows]
+            return cur.fetchall()
     except Exception:
         return []
     finally:
@@ -582,12 +581,20 @@ def get_sop_chunks_for_doc(doc_name):
             db_pool.putconn(conn)
 
 def retrieve_sop_context(query_text):
-    """Return a formatted block of relevant SOP chunks for prompt injection, or empty string."""
-    chunks = search_sop_chunks(query_text, limit=5)
-    if not chunks:
+    """Return a formatted block of relevant SOP chunks for prompt injection."""
+    results = search_sop_chunks(query_text, limit=5)
+    if not results:
         return ""
-    joined = "\n\n---\n\n".join(chunks)
-    return f"\n\n===RELEVANT SOP PROCEDURES===\n{joined}\n===END SOP PROCEDURES===\n"
+    parts = [content for doc_name, chunk_index, content in results]
+    joined = "\n\n---\n\n".join(parts)
+    return (
+        f"\n\n===RELEVANT SOP PROCEDURES===\n"
+        f"(Each SOP section below contains its own Document ID in the format HRL-XXX-XX. "
+        f"When referencing any of this SOP content in your evaluation, cite the Document ID "
+        f"that appears within that section at the end of the relevant sentence, "
+        f"formatted as: (SOP Document ID: HRL-XXX-XX))\n\n"
+        f"{joined}\n===END SOP PROCEDURES===\n"
+    )
 
 def load_exemplary_examples(limit=5):
     """Loads supervisor-refined exemplary responses for few-shot prompting."""
