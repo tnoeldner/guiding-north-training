@@ -616,19 +616,41 @@ def get_sop_chunks_for_doc(doc_name):
         if conn:
             db_pool.putconn(conn)
 
-def retrieve_sop_context(query_text):
-    """Return a formatted block of relevant SOP chunks for prompt injection."""
-    results = search_sop_chunks(query_text, limit=5)
+def retrieve_sop_context(query_text, limit=8):
+    """Return a formatted block of relevant SOP chunks for prompt injection.
+    Searches with the full query first; if fewer than 3 results, also searches
+    individual keywords and merges unique results."""
+    if not query_text or not query_text.strip():
+        return ""
+
+    results = search_sop_chunks(query_text, limit=limit)
+
+    # Keyword fallback: if we got fewer than 3 hits, try individual key words
+    if len(results) < 3:
+        seen_ids = {(r[0], r[1]) for r in results}
+        keywords = [w for w in query_text.split() if len(w) > 4]
+        for kw in keywords[:6]:  # cap at 6 individual searches
+            for row in search_sop_chunks(kw, limit=3):
+                if (row[0], row[1]) not in seen_ids:
+                    results.append(row)
+                    seen_ids.add((row[0], row[1]))
+            if len(results) >= limit:
+                break
+        results = results[:limit]
+
     if not results:
         return ""
-    parts = [content for doc_name, chunk_index, content in results]
+
+    parts = []
+    for doc_name, chunk_index, content in results:
+        parts.append(f"[Source: {doc_name} | Chunk #{chunk_index}]\n{content}")
     joined = "\n\n---\n\n".join(parts)
     return (
         f"\n\n===RELEVANT SOP PROCEDURES===\n"
-        f"(Each SOP section below contains its own Document ID in the format HRL-XXX-XX. "
-        f"When referencing any of this SOP content in your evaluation, cite the Document ID "
-        f"that appears within that section at the end of the relevant sentence, "
-        f"formatted as: (SOP Document ID: HRL-XXX-XX))\n\n"
+        f"(Each chunk below is labeled with its source document and chunk number. "
+        f"If the chunk text contains a Document ID in the format HRL-XXX-XX, cite that ID. "
+        f"Otherwise cite the source document filename shown in the [Source: ...] label. "
+        f"Format citations as: (SOP: HRL-XXX-XX) or (SOP: filename, Chunk #N))\n\n"
         f"{joined}\n===END SOP PROCEDURES===\n"
     )
 
@@ -1393,7 +1415,8 @@ if _token_param:
 
 **Operational Knowledge Base:**
 {_token_kb}
-{retrieve_sop_context(f"{assignment.get('assigned_role','')} {assignment.get('scenario','')[:300]}")}\n{get_fees_block()}
+{retrieve_sop_context((assignment.get('assigned_role','') + ' ' + assignment.get('scenario',''))[:600])}
+{get_fees_block()}
 
 **Context:**
 - Role: {assignment.get('assigned_role', 'Staff')}
@@ -1929,7 +1952,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                         **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                         ---
                         {load_knowledge_base()}
-                        {retrieve_sop_context(f'{selected_role} {st.session_state.get("scenario", "")[:300]}')}
+                        {retrieve_sop_context((selected_role + ' ' + st.session_state.get('scenario', ''))[:600])}
                         {get_fees_block()}
                         ---
 
@@ -2143,7 +2166,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                             **Operational Knowledge Base (protocols, policies & supervisor-approved exemplary standards):**
                             ---
                             {load_knowledge_base()}
-                            {retrieve_sop_context(f'{call_role} {call_transcript[:300]}')}
+                            {retrieve_sop_context((call_role + ' ' + call_transcript)[:600])}
                             {get_fees_block()}
                             ---
 
