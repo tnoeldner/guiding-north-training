@@ -101,7 +101,9 @@ def init_db():
                     ADD COLUMN IF NOT EXISTS reviewed_date TIMESTAMP WITH TIME ZONE,
                     ADD COLUMN IF NOT EXISTS difficulty VARCHAR(50),
                     ADD COLUMN IF NOT EXISTS token VARCHAR(64),
-                    ADD COLUMN IF NOT EXISTS token_used BOOLEAN DEFAULT FALSE;
+                    ADD COLUMN IF NOT EXISTS token_used BOOLEAN DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS exemplary_feedback TEXT,
+                    ADD COLUMN IF NOT EXISTS exemplary_refined TEXT;
             """)
             cur.execute("""
                 ALTER TABLE results
@@ -930,7 +932,8 @@ def load_assignments():
                 SELECT id, email, scenario_name, status, assigned_date, completed_date,
                        supervisor_email, supervisor_name, staff_name, assigned_role,
                        scenario_text, response, response_date, ai_analysis,
-                       supervisor_feedback, reviewed_date, difficulty
+                       supervisor_feedback, reviewed_date, difficulty,
+                       exemplary_feedback, exemplary_refined
                 FROM scenario_assignments
             """)
             assignments = []
@@ -956,6 +959,8 @@ def load_assignments():
                     "supervisor_feedback": r[14],
                     "reviewed_date": r[15].isoformat() if r[15] else None,
                     "difficulty": r[16],
+                    "exemplary_feedback": r[17],
+                    "exemplary_refined": r[18],
                 })
             return assignments
     except Exception as e:
@@ -1078,6 +1083,32 @@ def update_assignment_status(assignment_id, status, supervisor_feedback=None):
             return True
     except Exception as e:
         st.error(f"Error updating assignment status: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def update_assignment_exemplary(assignment_id, exemplary_feedback=None, exemplary_refined=None):
+    """Saves supervisor exemplary feedback/refined text on a scenario assignment."""
+    db_pool = get_db_pool()
+    if not db_pool:
+        return False
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE scenario_assignments
+                   SET exemplary_feedback = %s, exemplary_refined = %s
+                   WHERE id = %s""",
+                (exemplary_feedback, exemplary_refined, assignment_id)
+            )
+            conn.commit()
+            return True
+    except Exception as e:
+        st.error(f"Error updating assignment exemplary: {e}")
         if conn:
             conn.rollback()
         return False
@@ -3874,7 +3905,9 @@ Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
                     "supervisor_notes": assignment.get("supervisor_feedback", ""),
                     "supervisor_feedback": assignment.get("supervisor_feedback", ""),
                     "reviewed_by": assignment.get("supervisor_name") or assignment.get("supervisor_email", ""),
-                    "review_date": assignment.get("reviewed_date", "")
+                    "review_date": assignment.get("reviewed_date", ""),
+                    "exemplary_feedback": assignment.get("exemplary_feedback", ""),
+                    "exemplary_refined": assignment.get("exemplary_refined", ""),
                 }
                 completed_results.append(converted)
 
@@ -4395,10 +4428,8 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                 # Show / edit exemplary response
                                 exemplary_to_show = result.get('exemplary_refined') or result.get('exemplary_response')
                                 can_edit_exemplary = (
-                                    (st.session_state.get('is_admin') or st.session_state.get('user_role') == 'supervisor')
-                                    and not result.get('is_assigned')
-                                    and result.get('id')
-                                )
+                                    st.session_state.get('is_admin') or st.session_state.get('user_role') == 'supervisor'
+                                ) and (result.get('id') or result.get('assignment_id'))
                                 st.markdown("---")
                                 st.markdown("#### 🌟 Exemplary Response")
                                 if exemplary_to_show:
@@ -4414,15 +4445,16 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                 if can_edit_exemplary:
                                     st.markdown("**Edit Exemplary Response**")
                                     rp_feedback_val = result.get('exemplary_feedback') or ""
+                                    _widget_key = result.get('id') or result.get('assignment_id', '')
                                     rp_exemplary_feedback = st.text_area(
                                         "Your Corrections / Annotations:",
                                         value=rp_feedback_val,
                                         height=120,
-                                        key=f"rp_ex_feedback_{role_name}_{i}_{result.get('id')}"
+                                        key=f"rp_ex_feedback_{role_name}_{i}_{_widget_key}"
                                     )
                                     rp_col1, rp_col2 = st.columns(2)
                                     with rp_col1:
-                                        if st.button("🤖 Refine with AI", key=f"rp_refine_{role_name}_{i}_{result.get('id')}"):
+                                        if st.button("🤖 Refine with AI", key=f"rp_refine_{role_name}_{i}_{_widget_key}"):
                                             if rp_exemplary_feedback.strip():
                                                 with st.spinner("Refining exemplary response..."):
                                                     try:
@@ -4457,11 +4489,19 @@ Output only the exemplary response text."""
                                                             contents=rp_prompt
                                                         )
                                                         rp_refined_text = rp_refine_result.text if rp_refine_result.text else ""
-                                                        if update_result(
-                                                            result.get('id'),
-                                                            exemplary_feedback=rp_exemplary_feedback,
-                                                            exemplary_refined=rp_refined_text
-                                                        ):
+                                                        if result.get('is_assigned') and result.get('assignment_id'):
+                                                            saved = update_assignment_exemplary(
+                                                                result.get('assignment_id'),
+                                                                exemplary_feedback=rp_exemplary_feedback,
+                                                                exemplary_refined=rp_refined_text
+                                                            )
+                                                        else:
+                                                            saved = update_result(
+                                                                result.get('id'),
+                                                                exemplary_feedback=rp_exemplary_feedback,
+                                                                exemplary_refined=rp_refined_text
+                                                            )
+                                                        if saved:
                                                             sync_corrections_to_knowledge_base()
                                                             st.success("✅ Exemplary response refined and saved!")
                                                             st.rerun()
@@ -4472,8 +4512,16 @@ Output only the exemplary response text."""
                                             else:
                                                 st.warning("Please add your corrections before refining.")
                                     with rp_col2:
-                                        if st.button("💾 Save Corrections Only", key=f"rp_save_ex_{role_name}_{i}_{result.get('id')}"):
-                                            if update_result(result.get('id'), exemplary_feedback=rp_exemplary_feedback):
+                                        if st.button("💾 Save Corrections Only", key=f"rp_save_ex_{role_name}_{i}_{_widget_key}"):
+                                            if result.get('is_assigned') and result.get('assignment_id'):
+                                                saved = update_assignment_exemplary(
+                                                    result.get('assignment_id'),
+                                                    exemplary_feedback=rp_exemplary_feedback,
+                                                    exemplary_refined=result.get('exemplary_refined')
+                                                )
+                                            else:
+                                                saved = update_result(result.get('id'), exemplary_feedback=rp_exemplary_feedback)
+                                            if saved:
                                                 sync_corrections_to_knowledge_base()
                                                 st.success("Corrections saved.")
                                                 st.rerun()
