@@ -790,6 +790,15 @@ def load_exemplary_examples(limit=5):
                        reviewed_by, review_date
                 FROM results
                 WHERE exemplary_refined IS NOT NULL AND exemplary_refined != ''
+                UNION ALL
+                SELECT scenario_text AS scenario,
+                       NULL AS exemplary_response,
+                       exemplary_feedback,
+                       exemplary_refined,
+                       COALESCE(supervisor_name, supervisor_email) AS reviewed_by,
+                       reviewed_date AS review_date
+                FROM scenario_assignments
+                WHERE exemplary_refined IS NOT NULL AND exemplary_refined != ''
                 ORDER BY review_date DESC NULLS LAST
                 LIMIT %s
             """, (limit,))
