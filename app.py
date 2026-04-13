@@ -1898,6 +1898,7 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
         if st.button("🎲 Generate New Scenario", key="generate_scenario_button"):
             with st.spinner("Generating a new scenario..."):
                 last_scenario_text = st.session_state.scenario.strip() if st.session_state.scenario else "None"
+                building_history_text = ", ".join(st.session_state.get("building_history", [])) or "None"
                 prompt = build_scenario_prompt(
                     role_name=selected_role,
                     difficulty=difficulty,
