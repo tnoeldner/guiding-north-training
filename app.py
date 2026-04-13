@@ -458,6 +458,7 @@ def build_review_printout(data: dict) -> str:
 </html>"""
 
 
+def load_results():
     """Loads all results from the database."""
     db_pool = get_db_pool()
     if not db_pool:
