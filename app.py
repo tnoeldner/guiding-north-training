@@ -411,6 +411,13 @@ def build_review_printout(data: dict) -> str:
     score = esc(data.get("overall_score"))
     score_display = f"<span class='score'>Overall Score: {score} / 4</span>" if score and score != "Not Found" else ""
 
+    # Strip the exemplary section from ai_analysis so it doesn't render twice
+    import re as _re
+    ai_analysis_text = data.get("ai_analysis") or ""
+    _exemplary_pattern = r"(?:#{1,4}\s*)?(?:\*\*)?(?:Exemplary Call Example|Exemplary Response Example|Exemplary Response|Exemplary Answer|Exemplary Call)(?:\*\*)?[:\s*#]*\n"
+    _split = _re.split(_exemplary_pattern, ai_analysis_text, maxsplit=1, flags=_re.IGNORECASE)
+    ai_analysis_trimmed = _split[0].strip() if len(_split) > 1 else ai_analysis_text
+
     meta_rows = ""
     for label, key in [("Staff Member", "staff_name"), ("Role", "role"), ("Topic", "topic"),
                        ("Difficulty", "difficulty"), ("Assigned By", "assigned_by"),
@@ -452,7 +459,7 @@ def build_review_printout(data: dict) -> str:
 {score_display}
 {section("📋 Scenario", data.get("scenario"), "#eaf4fb")}
 {section("✍️ Staff Response", data.get("staff_response"), "#fff8e1")}
-{section("🔍 AI Analysis", data.get("ai_analysis"), "#f5f5f5")}
+{section("🔍 AI Analysis", ai_analysis_trimmed, "#f5f5f5")}
 {section("💬 Supervisor Feedback", data.get("supervisor_feedback"), "#e8f5e9")}
 {section("🌟 Exemplary Response", data.get("exemplary_response"), "#fdf3e7")}
 <div class="footer">Printed from Guiding NORTH Training App · UND Housing &amp; Residence Life · {esc(data.get("reviewed_date", ""))}</div>
@@ -511,14 +518,15 @@ def save_results(data):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO results (first_name, last_name, email, timestamp, role, difficulty, scenario, user_response, evaluation, overall_score, exemplary_response)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                INSERT INTO results (first_name, last_name, email, timestamp, role, difficulty, scenario, user_response, evaluation, overall_score, status, exemplary_response)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                 """,
                 (
                     data.get("first_name"), data.get("last_name"), data.get("email"),
                     data.get("timestamp"), data.get("role"), data.get("difficulty"),
                     data.get("scenario"), data.get("user_response"),
                     data.get("evaluation"), data.get("overall_score"),
+                    data.get("status", "pending"),
                     data.get("exemplary_response")
                 )
             )
@@ -2400,8 +2408,30 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                             except IndexError:
                                                 overall_score = "Parse Error"
                                             break
-                                    
-                                    # Save result
+
+                                    # Inline print button
+                                    _call_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    _call_html = build_review_printout({
+                                        "staff_name": f"{call_first_name} {call_last_name}".strip(),
+                                        "role": call_role,
+                                        "topic": "Call Analysis",
+                                        "difficulty": "Call Analysis",
+                                        "submitted_date": _call_ts,
+                                        "scenario": f"Phone Call Transcript (Length: {len(call_transcript)} chars)",
+                                        "staff_response": call_transcript,
+                                        "ai_analysis": analysis_response.text,
+                                        "exemplary_response": extract_exemplary_response(analysis_response.text),
+                                        "overall_score": overall_score,
+                                    })
+                                    st.download_button(
+                                        "🖨️ Print / Export Analysis",
+                                        data=_call_html,
+                                        file_name=f"call_analysis_{call_last_name}_{_call_ts[:8]}.html",
+                                        mime="text/html",
+                                        key=f"print_call_transcript_{_call_ts}"
+                                    )
+
+                                    # Save result (pending so supervisor reviews it)
                                     new_result = {
                                         "first_name": call_first_name,
                                         "last_name": call_last_name,
@@ -2413,10 +2443,11 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                         "user_response": call_transcript,
                                         "evaluation": analysis_response.text,
                                         "overall_score": overall_score,
+                                        "status": "pending",
                                         "exemplary_response": extract_exemplary_response(analysis_response.text),
                                     }
                                     if save_results(new_result):
-                                        st.success("Call analysis saved successfully!")
+                                        st.success("Call analysis saved — pending supervisor review.")
                                     else:
                                         st.error("Failed to save the analysis.")
                                 else:
@@ -2578,8 +2609,30 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                                 except IndexError:
                                                     overall_score = "Parse Error"
                                                 break
-                                        
-                                        # Save result
+
+                                        # Inline print button
+                                        _audio_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                        _audio_html = build_review_printout({
+                                            "staff_name": f"{call_first_name} {call_last_name}".strip(),
+                                            "role": call_role,
+                                            "topic": "Call Analysis (Audio)",
+                                            "difficulty": "Call Analysis (Audio)",
+                                            "submitted_date": _audio_ts,
+                                            "scenario": f"Phone Call Recording ({uploaded_audio.name})",
+                                            "staff_response": "(see AI analysis for transcript)",
+                                            "ai_analysis": analysis_response.text,
+                                            "exemplary_response": extract_exemplary_response(analysis_response.text),
+                                            "overall_score": overall_score,
+                                        })
+                                        st.download_button(
+                                            "🖨️ Print / Export Analysis",
+                                            data=_audio_html,
+                                            file_name=f"call_analysis_{call_last_name}_{_audio_ts[:8]}.html",
+                                            mime="text/html",
+                                            key=f"print_call_audio_{_audio_ts}"
+                                        )
+
+                                        # Save result (pending so supervisor reviews it)
                                         new_result = {
                                             "first_name": call_first_name,
                                             "last_name": call_last_name,
@@ -2588,13 +2641,14 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                                             "role": call_role,
                                             "difficulty": "Call Analysis (Audio)",
                                             "scenario": f"Phone Call Recording ({uploaded_audio.name})",
-                                            "user_response": analysis_response.text[:1000],  # Store first 1000 chars of full response
+                                            "user_response": analysis_response.text[:1000],
                                             "evaluation": analysis_response.text,
                                             "overall_score": overall_score,
+                                            "status": "pending",
                                             "exemplary_response": extract_exemplary_response(analysis_response.text),
                                         }
                                         if save_results(new_result):
-                                            st.success("Call analysis saved successfully!")
+                                            st.success("Call analysis saved — pending supervisor review.")
                                         else:
                                             st.error("Failed to save the analysis.")
                                     else:
