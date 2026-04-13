@@ -4505,7 +4505,7 @@ Output only the exemplary response text."""
                                     data=_html_doc,
                                     file_name=_fname,
                                     mime="text/html",
-                                    key=f"print_results_{i}_{result.get('id','')}{result.get('assignment_id','')}"
+                                    key=f"print_results_{role_name}_{i}_{result.get('id','')}{result.get('assignment_id','')}"
                                 )
 
                 # Display analytics for All Roles tab
