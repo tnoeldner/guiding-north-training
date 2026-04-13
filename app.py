@@ -375,7 +375,89 @@ def extract_exemplary_response(evaluation_text):
             return m.group(1).strip()
     return None
 
-def load_results():
+
+def build_review_printout(data: dict) -> str:
+    """Build a print-ready HTML document for a scenario review session.
+
+    data keys (all optional, gracefully omitted if missing):
+        staff_name, role, topic, difficulty, assigned_by,
+        assigned_date, submitted_date, reviewed_date,
+        scenario, staff_response, ai_analysis,
+        supervisor_feedback, exemplary_response, overall_score
+    """
+    import html as _html
+
+    def esc(v):
+        return _html.escape(str(v or "")) if v else ""
+
+    def section(title, body, color="#f5f5f5"):
+        if not body or not body.strip():
+            return ""
+        # Convert basic markdown bold/italics and newlines to HTML
+        import re
+        body_html = esc(body)
+        body_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', body_html)
+        body_html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', body_html)
+        body_html = re.sub(r'#{1,4} (.+)', r'<strong>\1</strong>', body_html)
+        body_html = body_html.replace('\n', '<br>')
+        return f"""
+        <div class="section" style="background:{color};">
+            <h3>{_html.escape(title)}</h3>
+            <div class="body">{body_html}</div>
+        </div>"""
+
+    score = esc(data.get("overall_score"))
+    score_display = f"<span class='score'>Overall Score: {score} / 4</span>" if score and score != "Not Found" else ""
+
+    meta_rows = ""
+    for label, key in [("Staff Member", "staff_name"), ("Role", "role"), ("Topic", "topic"),
+                       ("Difficulty", "difficulty"), ("Assigned By", "assigned_by"),
+                       ("Assigned", "assigned_date"), ("Submitted", "submitted_date"),
+                       ("Reviewed", "reviewed_date")]:
+        val = data.get(key)
+        if val:
+            meta_rows += f"<tr><td><strong>{label}</strong></td><td>{esc(val)}</td></tr>"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scenario Review — {esc(data.get('staff_name', 'Staff'))}</title>
+<style>
+  @media print {{
+    .no-print {{ display: none; }}
+    body {{ margin: 0.5in; }}
+  }}
+  body {{ font-family: Georgia, serif; font-size: 13px; color: #222; max-width: 900px; margin: 24px auto; padding: 0 16px; }}
+  h1 {{ font-size: 20px; color: #1a3a5c; border-bottom: 2px solid #1a3a5c; padding-bottom: 6px; }}
+  h3 {{ font-size: 14px; margin: 0 0 8px 0; color: #1a3a5c; }}
+  table {{ border-collapse: collapse; margin-bottom: 18px; width: 100%; }}
+  td {{ padding: 4px 10px; vertical-align: top; }}
+  tr:nth-child(even) td {{ background: #eef2f7; }}
+  .section {{ border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; }}
+  .body {{ line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }}
+  .score {{ display: inline-block; background: #1a3a5c; color: white; padding: 4px 14px; border-radius: 4px; font-size: 14px; font-weight: bold; margin-bottom: 14px; }}
+  .footer {{ font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 24px; }}
+  button.print-btn {{ background:#1a3a5c; color:white; border:none; padding:8px 18px; border-radius:4px; cursor:pointer; font-size:13px; margin-bottom:16px; }}
+</style>
+</head>
+<body>
+<div class="no-print">
+  <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+</div>
+<h1>🧭 Guiding NORTH — Scenario Review</h1>
+<table>{meta_rows}</table>
+{score_display}
+{section("📋 Scenario", data.get("scenario"), "#eaf4fb")}
+{section("✍️ Staff Response", data.get("staff_response"), "#fff8e1")}
+{section("🔍 AI Analysis", data.get("ai_analysis"), "#f5f5f5")}
+{section("💬 Supervisor Feedback", data.get("supervisor_feedback"), "#e8f5e9")}
+{section("🌟 Exemplary Response", data.get("exemplary_response"), "#fdf3e7")}
+<div class="footer">Printed from Guiding NORTH Training App · UND Housing &amp; Residence Life · {esc(data.get("reviewed_date", ""))}</div>
+</body>
+</html>"""
+
+
     """Loads all results from the database."""
     db_pool = get_db_pool()
     if not db_pool:
@@ -2824,7 +2906,7 @@ Output only the exemplary response text."""
                             key=f"notes_{idx}_{result.get('email')}"
                         )
                         
-                        col_approve, col_reject = st.columns(2)
+                        col_approve, col_reject, col_print = st.columns(3)
                         
                         with col_approve:
                             if st.button("✅ Mark as Reviewed", key=f"approve_{idx}_{result.get('email')}", type="primary"):
@@ -2839,6 +2921,31 @@ Output only the exemplary response text."""
                                     st.rerun()
                                 else:
                                     st.error("Failed to update scenario status.")
+
+                        with col_print:
+                            _ex = result.get('exemplary_refined') or result.get('exemplary_response') or ""
+                            _html_doc = build_review_printout({
+                                "staff_name": f"{result.get('first_name','')} {result.get('last_name','')}".strip(),
+                                "role": result.get('role'),
+                                "topic": result.get('difficulty'),
+                                "difficulty": result.get('difficulty'),
+                                "submitted_date": (result.get('timestamp') or "")[:16],
+                                "reviewed_date": (result.get('review_date') or "")[:10],
+                                "scenario": result.get('scenario'),
+                                "staff_response": result.get('user_response'),
+                                "ai_analysis": result.get('evaluation'),
+                                "supervisor_feedback": supervisor_notes,
+                                "exemplary_response": _ex,
+                                "overall_score": result.get('overall_score'),
+                            })
+                            _fname = f"review_{(result.get('last_name') or 'staff').replace(' ','_')}_{(result.get('timestamp') or '')[:10]}.html"
+                            st.download_button(
+                                "🖨️ Print / Export Review",
+                                data=_html_doc,
+                                file_name=_fname,
+                                mime="text/html",
+                                key=f"print_result_{idx}_{result.get('id')}"
+                            )
 
                 if awaiting_assignments:
                     st.divider()
@@ -2911,12 +3018,37 @@ Output only the exemplary response text."""
                                 key=f"assign_feedback_{idx}_{assignment.get('staff_email')}"
                             )
 
-                            if st.button("✅ Mark Assigned Scenario as Reviewed", key=f"assign_review_{idx}_{assignment.get('staff_email')}"):
-                                if update_assignment_status(assignment.get('id'), 'reviewed', supervisor_feedback):
-                                    st.success("✅ Assigned scenario marked as reviewed!")
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to update assigned scenario status.")
+                            col_rev, col_print_a = st.columns(2)
+                            with col_rev:
+                                if st.button("✅ Mark Assigned Scenario as Reviewed", key=f"assign_review_{idx}_{assignment.get('staff_email')}"):
+                                    if update_assignment_status(assignment.get('id'), 'reviewed', supervisor_feedback):
+                                        st.success("✅ Assigned scenario marked as reviewed!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to update assigned scenario status.")
+                            with col_print_a:
+                                _a_html = build_review_printout({
+                                    "staff_name": assignment.get("staff_name") or assignment.get("staff_email"),
+                                    "role": assignment.get("assigned_role"),
+                                    "topic": assignment.get("topic"),
+                                    "difficulty": assignment.get("difficulty"),
+                                    "assigned_by": assignment.get("supervisor_name"),
+                                    "assigned_date": (assignment.get("assigned_date") or "")[:10],
+                                    "submitted_date": (assignment.get("response_date") or "")[:16],
+                                    "scenario": assignment.get("scenario"),
+                                    "staff_response": assignment.get("response"),
+                                    "ai_analysis": assignment.get("ai_analysis"),
+                                    "supervisor_feedback": supervisor_feedback,
+                                    "exemplary_response": extract_exemplary_response(assignment.get("ai_analysis") or ""),
+                                })
+                                _a_fname = f"review_{(assignment.get('staff_name') or 'staff').replace(' ','_')}_{(assignment.get('assigned_date') or '')[:10]}.html"
+                                st.download_button(
+                                    "🖨️ Print / Export Review",
+                                    data=_a_html,
+                                    file_name=_a_fname,
+                                    mime="text/html",
+                                    key=f"print_assign_{idx}_{assignment.get('id')}"
+                                )
 
     # Assigned Scenarios Tab - For Staff Only
     if 'assigned_scenarios_tab' in locals() and assigned_scenarios_tab is not None:
