@@ -4365,7 +4365,8 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                 if result.get('reviewed_by'):
                                     st.markdown("---")
                                     st.markdown("#### Supervisor Review")
-                                    review_date = result.get('review_date', 'N/A')
+                                    review_date = result.get('review_date', '')
+                                    formatted_review_date = review_date
                                     if review_date and review_date != 'N/A':
                                         # Format the ISO timestamp for readability
                                         try:
@@ -4376,7 +4377,8 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                             formatted_review_date = review_date
                                     
                                     st.success(f"✅ Reviewed by: **{result.get('reviewed_by')}**")
-                                    st.success(f"📅 Review Date: **{formatted_review_date}**")
+                                    if formatted_review_date:
+                                        st.success(f"📅 Review Date: **{formatted_review_date}**")
                                     
                                     if result.get('supervisor_notes'):
                                         st.markdown("**Supervisor Notes:**")
