@@ -4418,11 +4418,11 @@ OVERALL_SCORE: [Your 1-4 Rating]
                                         "Your Corrections / Annotations:",
                                         value=rp_feedback_val,
                                         height=120,
-                                        key=f"rp_ex_feedback_{i}_{result.get('id')}"
+                                        key=f"rp_ex_feedback_{role_name}_{i}_{result.get('id')}"
                                     )
                                     rp_col1, rp_col2 = st.columns(2)
                                     with rp_col1:
-                                        if st.button("🤖 Refine with AI", key=f"rp_refine_{i}_{result.get('id')}"):
+                                        if st.button("🤖 Refine with AI", key=f"rp_refine_{role_name}_{i}_{result.get('id')}"):
                                             if rp_exemplary_feedback.strip():
                                                 with st.spinner("Refining exemplary response..."):
                                                     try:
@@ -4472,7 +4472,7 @@ Output only the exemplary response text."""
                                             else:
                                                 st.warning("Please add your corrections before refining.")
                                     with rp_col2:
-                                        if st.button("💾 Save Corrections Only", key=f"rp_save_ex_{i}_{result.get('id')}"):
+                                        if st.button("💾 Save Corrections Only", key=f"rp_save_ex_{role_name}_{i}_{result.get('id')}"):
                                             if update_result(result.get('id'), exemplary_feedback=rp_exemplary_feedback):
                                                 sync_corrections_to_knowledge_base()
                                                 st.success("Corrections saved.")
