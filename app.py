@@ -3873,8 +3873,8 @@ Provide structured feedback on each NORTH pillar and an overall score (1-4)."""
                     "assignment_id": assignment.get("id"),
                     "supervisor_notes": assignment.get("supervisor_feedback", ""),
                     "supervisor_feedback": assignment.get("supervisor_feedback", ""),
-                    "reviewed_by": assignment.get("reviewed_by", ""),
-                    "review_date": assignment.get("review_date", "")
+                    "reviewed_by": assignment.get("supervisor_name") or assignment.get("supervisor_email", ""),
+                    "review_date": assignment.get("reviewed_date", "")
                 }
                 completed_results.append(converted)
 
@@ -4475,7 +4475,39 @@ Output only the exemplary response text."""
                                                 sync_corrections_to_knowledge_base()
                                                 st.success("Corrections saved.")
                                                 st.rerun()
-                
+
+                                # Print / Export
+                                _ex_print = result.get('exemplary_refined') or result.get('exemplary_response') or \
+                                            extract_exemplary_response(result.get('evaluation') or '')
+                                _html_doc = build_review_printout({
+                                    "staff_name": (f"{result.get('first_name','')} {result.get('last_name','')}".strip()
+                                                   or result.get('user_name', '')),
+                                    "role": result.get('role', ''),
+                                    "topic": result.get('scenario_name', result.get('difficulty', '')),
+                                    "difficulty": result.get('difficulty', ''),
+                                    "assigned_by": result.get('reviewed_by', ''),
+                                    "submitted_date": (result.get('timestamp') or '')[:16],
+                                    "reviewed_date": (result.get('review_date') or '')[:10],
+                                    "scenario": result.get('scenario', ''),
+                                    "staff_response": result.get('user_response', ''),
+                                    "ai_analysis": result.get('evaluation', ''),
+                                    "supervisor_feedback": (result.get('supervisor_notes')
+                                                            or result.get('supervisor_feedback', '')),
+                                    "exemplary_response": _ex_print,
+                                    "overall_score": result.get('overall_score', ''),
+                                })
+                                _fname = (
+                                    f"review_{(result.get('last_name') or 'staff').replace(' ','_')}"
+                                    f"_{(result.get('timestamp') or '')[:10]}.html"
+                                )
+                                st.download_button(
+                                    "🖨️ Print / Export Review",
+                                    data=_html_doc,
+                                    file_name=_fname,
+                                    mime="text/html",
+                                    key=f"print_results_{i}_{result.get('id','')}{result.get('assignment_id','')}"
+                                )
+
                 # Display analytics for All Roles tab
                 with role_tabs[0]:
                     display_role_analytics(filtered_results, "All Roles")
