@@ -2685,19 +2685,24 @@ if st.session_state.get("email") and st.session_state.get("api_configured"):
                 if r.get('status') == 'pending' and r.get('email') in visible_users
             ]
 
-            # Load assigned scenarios and filter for pending review
+            # Load assigned scenarios — split by status
             assignments_data = load_assignments()
             pending_assignments = [
                 (idx, a) for idx, a in enumerate(assignments_data)
                 if a.get("status") == "completed"
                 and a.get("email") in visible_users
             ]
+            awaiting_assignments = [
+                (idx, a) for idx, a in enumerate(assignments_data)
+                if a.get("status") == "assigned"
+                and a.get("email") in visible_users
+            ]
             
-            if not pending_results and not pending_assignments:
+            if not pending_results and not pending_assignments and not awaiting_assignments:
                 st.success("✅ All scenarios have been reviewed!")
             else:
-                pending_count = len(pending_results) + len(pending_assignments)
-                st.warning(f"⚠️ {pending_count} scenarios pending your review")
+                pending_count = len(pending_results) + len(pending_assignments) + len(awaiting_assignments)
+                st.warning(f"⚠️ {pending_count} scenarios pending your attention")
                 
                 for idx, result in pending_results:
                     with st.expander(
@@ -2833,6 +2838,43 @@ Output only the exemplary response text."""
                                     st.rerun()
                                 else:
                                     st.error("Failed to update scenario status.")
+
+                if awaiting_assignments:
+                    st.divider()
+                    st.subheader("⏳ Pending Completion")
+                    st.caption("These scenarios have been assigned but the staff member has not yet submitted a response.")
+
+                    for idx, assignment in awaiting_assignments:
+                        staff_display = assignment.get("staff_name") or assignment.get("email")
+                        assigned_date = (assignment.get("assigned_date") or "")[:10]
+                        role_display = assignment.get("assigned_role") or "N/A"
+                        topic_display = assignment.get("topic") or "N/A"
+                        difficulty_display = assignment.get("difficulty") or "N/A"
+                        with st.expander(
+                            f"⏳ {staff_display} — {topic_display} ({role_display}) — Assigned {assigned_date}",
+                            expanded=False
+                        ):
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown(f"**Staff:** {staff_display}")
+                                st.markdown(f"**Email:** {assignment.get('email', 'N/A')}")
+                                st.markdown(f"**Role:** {role_display}")
+                            with col2:
+                                st.markdown(f"**Topic:** {topic_display}")
+                                st.markdown(f"**Difficulty:** {difficulty_display}")
+                                st.markdown(f"**Assigned By:** {assignment.get('supervisor_name', 'N/A')}")
+                                st.markdown(f"**Assigned On:** {assigned_date}")
+
+                            st.markdown("**Scenario:**")
+                            st.info(assignment.get("scenario", "N/A"))
+
+                            if st.button("🗑️ Rescind Assignment", key=f"rescind_{idx}_{assignment.get('id')}",
+                                         help="Remove this assignment before the staff member completes it."):
+                                if delete_assignment(assignment.get('id')):
+                                    st.success("Assignment rescinded.")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to rescind assignment.")
 
                 if pending_assignments:
                     st.divider()
